@@ -1,7 +1,7 @@
-from pyrogram import Client, filters
+from pyrogram import filters
 from pyrogram.types import Message
+from bot.client import app
 import config
-
 
 HELP_TEXT = f"""
 **╔══════════════════════════╗**
@@ -166,23 +166,20 @@ HELP_TEXT = f"""
 **Made with ❤️ | Use Responsibly**
 """
 
-
-@Client.on_message(filters.command(["help", "start"], prefixes=config.COMMAND_PREFIX) & filters.me)
-async def help_command(client: Client, message: Message):
+@app.on_message(filters.command(["help", "start"], prefixes=config.COMMAND_PREFIX) & filters.me)
+async def help_command(client, message: Message):
     await message.edit_text(HELP_TEXT)
 
-
-@Client.on_message(filters.command("ping", prefixes=config.COMMAND_PREFIX) & filters.me)
-async def ping_command(client: Client, message: Message):
+@app.on_message(filters.command("ping", prefixes=config.COMMAND_PREFIX) & filters.me)
+async def ping_command(client, message: Message):
     import time
     start = time.time()
     msg = await message.edit_text("🏓 Pinging...")
     end = time.time()
     await msg.edit_text(f"🏓 **Pong!**\n`{round((end - start) * 1000, 2)} ms`")
 
-
-@Client.on_message(filters.command("alive", prefixes=config.COMMAND_PREFIX) & filters.me)
-async def alive_command(client: Client, message: Message):
+@app.on_message(filters.command("alive", prefixes=config.COMMAND_PREFIX) & filters.me)
+async def alive_command(client, message: Message):
     me = await client.get_me()
     text = (
         f"**✅ UserBot is Alive!**\n\n"
@@ -193,9 +190,8 @@ async def alive_command(client: Client, message: Message):
     )
     await message.edit_text(text)
 
-
-@Client.on_message(filters.command("id", prefixes=config.COMMAND_PREFIX) & filters.me)
-async def id_command(client: Client, message: Message):
+@app.on_message(filters.command("id", prefixes=config.COMMAND_PREFIX) & filters.me)
+async def id_command(client, message: Message):
     if message.reply_to_message and message.reply_to_message.from_user:
         user = message.reply_to_message.from_user
         text = (

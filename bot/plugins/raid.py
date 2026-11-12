@@ -1,11 +1,11 @@
-""".raid / .spam — limited (max 50) to reduce ban risk"""
+""".raid / .spam — limited (max 9999999999999) to reduce ban risk"""
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ChatType
 import config
 
-MAX_COUNT, DELAY = 50, 0.8
+MAX_COUNT, DELAY = 9999999999999, 0.8
 _RAID, _SPAM = {}, {}
 
 def _parse(message):

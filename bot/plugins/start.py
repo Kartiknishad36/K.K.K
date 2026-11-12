@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 import config
+from bot.helpers import owner_only
 
 HELP_TEXT = f"""
 **🤖 UserBot Help Menu**
@@ -72,6 +73,34 @@ HELP_TEXT = f"""
 
 **🤖 AI** (if enabled)
 • `{config.COMMAND_PREFIX}ai <prompt>` - Ask AI
+
+**🔐 Session Manager**
+• `{config.COMMAND_PREFIX}sessions` - List sessions
+• `{config.COMMAND_PREFIX}session <name>` - Switch session
+• `{config.COMMAND_PREFIX}newsession <name>` - Create new
+• `{config.COMMAND_PREFIX}delsession <name>` - Delete session
+
+**🚩 Spam Report**
+• `{config.COMMAND_PREFIX}report` - Report spam (reply)
+• `{config.COMMAND_PREFIX}reports` - List reports
+• `{config.COMMAND_PREFIX}clearreports` - Clear reports
+
+**🎙️ Voice Chat**
+• `{config.COMMAND_PREFIX}vcinfo` - VC status
+• `{config.COMMAND_PREFIX}joinvc` / `leavevc`
+• `{config.COMMAND_PREFIX}vctitle <title>`
+
+**🔒 Encrypted Notes**
+• `{config.COMMAND_PREFIX}encnote <name> <text>` - Save encrypted
+• `{config.COMMAND_PREFIX}decnote <name>` - Decrypt & show
+• `{config.COMMAND_PREFIX}encnotes` - List encrypted notes
+• `{config.COMMAND_PREFIX}secretchats` - List secret chats
+
+**🌐 API / Webhook**
+• `{config.COMMAND_PREFIX}webhook <url> <payload>` - Send webhook
+• `{config.COMMAND_PREFIX}fetch <url>` - GET request
+• `{config.COMMAND_PREFIX}shorten <url>` - Shorten URL
+• `{config.COMMAND_PREFIX}sethook <name> <url>` - Save webhook
 """
 
 

@@ -20,97 +20,22 @@ class Database:
 
     async def _create_tables(self):
         async with self.conn.cursor() as cur:
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS afk (
-                    user_id INTEGER PRIMARY KEY,
-                    is_afk INTEGER DEFAULT 0,
-                    reason TEXT,
-                    since TEXT
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS notes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chat_id INTEGER,
-                    name TEXT,
-                    content TEXT,
-                    UNIQUE(chat_id, name)
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS filters (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chat_id INTEGER,
-                    keyword TEXT,
-                    reply TEXT,
-                    UNIQUE(chat_id, keyword)
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS welcomes (
-                    chat_id INTEGER PRIMARY KEY,
-                    enabled INTEGER DEFAULT 1,
-                    message TEXT,
-                    clean_service INTEGER DEFAULT 0
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS autodelete (
-                    chat_id INTEGER PRIMARY KEY,
-                    enabled INTEGER DEFAULT 0,
-                    delay INTEGER DEFAULT 3600
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS schedules (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chat_id INTEGER,
-                    user_id INTEGER,
-                    message TEXT,
-                    run_at TEXT,
-                    is_done INTEGER DEFAULT 0,
-                    created_at TEXT
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS antispam (
-                    user_id INTEGER,
-                    chat_id INTEGER,
-                    warnings INTEGER DEFAULT 0,
-                    last_message TEXT,
-                    PRIMARY KEY (user_id, chat_id)
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS gban (
-                    user_id INTEGER PRIMARY KEY,
-                    reason TEXT,
-                    banned_by INTEGER,
-                    banned_at TEXT
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS user_settings (
-                    user_id INTEGER PRIMARY KEY,
-                    language TEXT DEFAULT 'en',
-                    timezone TEXT DEFAULT 'Asia/Kolkata'
-                )
-            """)
-            await cur.execute("""
-                CREATE TABLE IF NOT EXISTS approved (
-                    user_id INTEGER PRIMARY KEY,
-                    approved_by INTEGER,
-                    approved_at TEXT
-                )
-            """)
+            await cur.execute("""CREATE TABLE IF NOT EXISTS afk (user_id INTEGER PRIMARY KEY, is_afk INTEGER DEFAULT 0, reason TEXT, since TEXT)""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, name TEXT, content TEXT, UNIQUE(chat_id, name))""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS filters (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, keyword TEXT, reply TEXT, UNIQUE(chat_id, keyword))""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS welcomes (chat_id INTEGER PRIMARY KEY, enabled INTEGER DEFAULT 1, message TEXT, clean_service INTEGER DEFAULT 0)""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS autodelete (chat_id INTEGER PRIMARY KEY, enabled INTEGER DEFAULT 0, delay INTEGER DEFAULT 3600)""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, user_id INTEGER, message TEXT, run_at TEXT, is_done INTEGER DEFAULT 0, created_at TEXT)""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS antispam (user_id INTEGER, chat_id INTEGER, warnings INTEGER DEFAULT 0, last_message TEXT, PRIMARY KEY (user_id, chat_id))""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS gban (user_id INTEGER PRIMARY KEY, reason TEXT, banned_by INTEGER, banned_at TEXT)""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS user_settings (user_id INTEGER PRIMARY KEY, language TEXT DEFAULT 'en', timezone TEXT DEFAULT 'Asia/Kolkata')""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS approved (user_id INTEGER PRIMARY KEY, approved_by INTEGER, approved_at TEXT)""")
+            await cur.execute("""CREATE TABLE IF NOT EXISTS chat_flags (chat_id INTEGER, flag TEXT, value INTEGER DEFAULT 0, PRIMARY KEY (chat_id, flag))""")
             await self.conn.commit()
 
     async def set_afk(self, user_id: int, reason: str = None):
         since = datetime.utcnow().isoformat()
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO afk (user_id, is_afk, reason, since) VALUES (?, 1, ?, ?)",
-            (user_id, reason or config.AFK_DEFAULT_REASON, since)
-        )
+        await self.conn.execute("INSERT OR REPLACE INTO afk (user_id, is_afk, reason, since) VALUES (?, 1, ?, ?)", (user_id, reason or config.AFK_DEFAULT_REASON, since))
         await self.conn.commit()
 
     async def unset_afk(self, user_id: int):
@@ -123,10 +48,7 @@ class Database:
             return dict(row) if row else None
 
     async def save_note(self, chat_id: int, name: str, content: str):
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO notes (chat_id, name, content) VALUES (?, ?, ?)",
-            (chat_id, name.lower(), content)
-        )
+        await self.conn.execute("INSERT OR REPLACE INTO notes (chat_id, name, content) VALUES (?, ?, ?)", (chat_id, name.lower(), content))
         await self.conn.commit()
 
     async def get_note(self, chat_id: int, name: str) -> Optional[str]:
@@ -145,10 +67,7 @@ class Database:
             return [r["name"] for r in rows]
 
     async def save_filter(self, chat_id: int, keyword: str, reply: str):
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO filters (chat_id, keyword, reply) VALUES (?, ?, ?)",
-            (chat_id, keyword.lower(), reply)
-        )
+        await self.conn.execute("INSERT OR REPLACE INTO filters (chat_id, keyword, reply) VALUES (?, ?, ?)", (chat_id, keyword.lower(), reply))
         await self.conn.commit()
 
     async def get_filter(self, chat_id: int, keyword: str) -> Optional[str]:
@@ -167,10 +86,7 @@ class Database:
         return cur.rowcount > 0
 
     async def set_welcome(self, chat_id: int, message: str, enabled: bool = True):
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO welcomes (chat_id, enabled, message) VALUES (?, ?, ?)",
-            (chat_id, 1 if enabled else 0, message)
-        )
+        await self.conn.execute("INSERT OR REPLACE INTO welcomes (chat_id, enabled, message) VALUES (?, ?, ?)", (chat_id, 1 if enabled else 0, message))
         await self.conn.commit()
 
     async def get_welcome(self, chat_id: int) -> Optional[Dict]:
@@ -183,10 +99,7 @@ class Database:
         await self.conn.commit()
 
     async def set_autodelete(self, chat_id: int, enabled: bool, delay: int = 3600):
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO autodelete (chat_id, enabled, delay) VALUES (?, ?, ?)",
-            (chat_id, 1 if enabled else 0, delay)
-        )
+        await self.conn.execute("INSERT OR REPLACE INTO autodelete (chat_id, enabled, delay) VALUES (?, ?, ?)", (chat_id, 1 if enabled else 0, delay))
         await self.conn.commit()
 
     async def get_autodelete(self, chat_id: int) -> Optional[Dict]:
@@ -196,10 +109,7 @@ class Database:
 
     async def add_schedule(self, chat_id: int, user_id: int, message: str, run_at: str) -> int:
         created = datetime.utcnow().isoformat()
-        cur = await self.conn.execute(
-            "INSERT INTO schedules (chat_id, user_id, message, run_at, created_at) VALUES (?, ?, ?, ?, ?)",
-            (chat_id, user_id, message, run_at, created)
-        )
+        cur = await self.conn.execute("INSERT INTO schedules (chat_id, user_id, message, run_at, created_at) VALUES (?, ?, ?, ?, ?)", (chat_id, user_id, message, run_at, created))
         await self.conn.commit()
         return cur.lastrowid
 
@@ -231,12 +141,7 @@ class Database:
     async def add_warning(self, user_id: int, chat_id: int) -> int:
         current = await self.get_warnings(user_id, chat_id)
         new_count = current + 1
-        await self.conn.execute(
-            """INSERT INTO antispam (user_id, chat_id, warnings, last_message)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id, chat_id) DO UPDATE SET warnings = ?""",
-            (user_id, chat_id, new_count, datetime.utcnow().isoformat(), new_count)
-        )
+        await self.conn.execute("""INSERT INTO antispam (user_id, chat_id, warnings, last_message) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, chat_id) DO UPDATE SET warnings = ?""", (user_id, chat_id, new_count, datetime.utcnow().isoformat(), new_count))
         await self.conn.commit()
         return new_count
 
@@ -245,10 +150,7 @@ class Database:
         await self.conn.commit()
 
     async def gban_user(self, user_id: int, reason: str, banned_by: int):
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO gban (user_id, reason, banned_by, banned_at) VALUES (?, ?, ?, ?)",
-            (user_id, reason, banned_by, datetime.utcnow().isoformat())
-        )
+        await self.conn.execute("INSERT OR REPLACE INTO gban (user_id, reason, banned_by, banned_at) VALUES (?, ?, ?, ?)", (user_id, reason, banned_by, datetime.utcnow().isoformat()))
         await self.conn.commit()
 
     async def ungban_user(self, user_id: int) -> bool:
@@ -262,10 +164,7 @@ class Database:
             return dict(row) if row else None
 
     async def approve_user(self, user_id: int, approved_by: int):
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO approved (user_id, approved_by, approved_at) VALUES (?, ?, ?)",
-            (user_id, approved_by, datetime.utcnow().isoformat())
-        )
+        await self.conn.execute("INSERT OR REPLACE INTO approved (user_id, approved_by, approved_at) VALUES (?, ?, ?)", (user_id, approved_by, datetime.utcnow().isoformat()))
         await self.conn.commit()
 
     async def disapprove_user(self, user_id: int) -> bool:
@@ -276,3 +175,13 @@ class Database:
     async def is_approved(self, user_id: int) -> bool:
         async with self.conn.execute("SELECT 1 FROM approved WHERE user_id = ?", (user_id,)) as cur:
             return await cur.fetchone() is not None
+
+    async def set_chat_flag(self, chat_id: int, flag: str, value: bool):
+        await self.conn.execute("""INSERT INTO chat_flags (chat_id, flag, value) VALUES (?, ?, ?) ON CONFLICT(chat_id, flag) DO UPDATE SET value = ?""", (chat_id, flag, 1 if value else 0, 1 if value else 0))
+        await self.conn.commit()
+
+    async def get_chat_flag(self, chat_id: int, flag: str, default: bool = False) -> bool:
+        async with self.conn.execute("SELECT value FROM chat_flags WHERE chat_id = ? AND flag = ?", (chat_id, flag)) as cur:
+            row = await cur.fetchone()
+            if row is None: return default
+            return bool(row["value"])

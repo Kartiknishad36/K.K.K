@@ -14,9 +14,10 @@ logging.basicConfig(
 logger = logging.getLogger("UserBot")
 
 app = Client(
-    name=config.SESSION_NAME,
+    name="mybot",
     api_id=config.API_ID,
     api_hash=config.API_HASH,
+    session_string=config.SESSION_STRING,
     in_memory=False,
     workdir="data",
 )

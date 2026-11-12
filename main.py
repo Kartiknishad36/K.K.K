@@ -11,7 +11,6 @@ import config
 # Load all plugins
 PLUGINS_DIR = Path(__file__).parent / "bot" / "plugins"
 
-
 def load_plugins():
     for file in PLUGINS_DIR.glob("*.py"):
         if file.name.startswith("_"):
@@ -22,7 +21,6 @@ def load_plugins():
             logger.info(f"Loaded plugin: {file.stem}")
         except Exception as e:
             logger.error(f"Failed to load plugin {file.stem}: {e}")
-
 
 async def scheduler_worker():
     """Background task to execute scheduled messages."""
@@ -45,7 +43,6 @@ async def scheduler_worker():
 
         await asyncio.sleep(20)  # Check every 20 seconds
 
-
 async def main():
     # Validate config
     if not config.API_ID or not config.API_HASH:
@@ -66,6 +63,14 @@ async def main():
     me = await app.get_me()
     logger.info(f"UserBot started as {me.first_name} (@{me.username}) [{me.id}]")
 
+    # Cache all dialogs to fix Peer id invalid errors
+    try:
+        async for _ in app.get_dialogs():
+            pass
+        logger.info("Dialogs cached.")
+    except Exception as e:
+        logger.warning(f"Dialog cache failed: {e}")
+
     # Start background scheduler
     if config.ENABLE_SCHEDULER:
         asyncio.create_task(scheduler_worker())
@@ -73,7 +78,6 @@ async def main():
 
     # Keep running
     await asyncio.Event().wait()
-
 
 if __name__ == "__main__":
     try:

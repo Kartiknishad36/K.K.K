@@ -17,7 +17,8 @@ LOGS_DIR.mkdir(exist_ok=True)
 # Telegram credentials
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH", "")
-SESSION_NAME = os.getenv("SESSION_NAME", "userbot")
+SESSION_NAME = os.getenv("SESSION_NAME", "mybot")
+SESSION_STRING = os.getenv("SESSION_STRING", "")
 
 # Owner
 OWNER_ID = int(os.getenv("OWNER_ID", 0))

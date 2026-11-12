@@ -9,7 +9,7 @@ HELP_TEXT = f"""
 **╚══════════════════════════╝**
 
 **Prefix :** `{config.COMMAND_PREFIX}`
-**Total Commands :** 70+
+**Total Commands :** 80+
 
 ────────────────────
 **📌 BASIC**
@@ -82,7 +82,7 @@ HELP_TEXT = f"""
 ────────────────────
 **🔄 CLONE / MIRROR**
 ────────────────────
-`{config.COMMAND_PREFIX}clone <chat_id>` — Start cloning
+`{config.COMMAND_PREFIX}clone <chat_id>` — Start cloning messages
 `{config.COMMAND_PREFIX}clone off` — Stop cloning
 `{config.COMMAND_PREFIX}clones` — List active clones
 
@@ -147,6 +147,20 @@ HELP_TEXT = f"""
 `{config.COMMAND_PREFIX}fetch <url>` — GET any URL
 `{config.COMMAND_PREFIX}shorten <url>` — Shorten URL
 `{config.COMMAND_PREFIX}sethook <name> <url>` — Save webhook
+
+────────────────────
+**👤 PROFILE CLONE**
+────────────────────
+`{config.COMMAND_PREFIX}clonemode on|off` — Enable / disable cloner
+`{config.COMMAND_PREFIX}clone` — Clone profile (reply / id / @user)
+`{config.COMMAND_PREFIX}back` — Restore your original profile
+
+────────────────────
+**📢 TAGALL**
+────────────────────
+`{config.COMMAND_PREFIX}tagall <msg>` — Tag all members (batch)
+`{config.COMMAND_PREFIX}tag <msg>` — Tag one by one (safer)
+`{config.COMMAND_PREFIX}tagadmin <msg>` — Tag all admins only
 
 ────────────────────
 **Made with ❤️ | Use Responsibly**

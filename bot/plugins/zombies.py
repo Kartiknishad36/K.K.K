@@ -1,12 +1,13 @@
 """.zombies | .zombies clean | .zombies ban"""
 import asyncio
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message
 from pyrogram.enums import ChatType, ChatMemberStatus
 from pyrogram.errors import FloodWait, ChatAdminRequired
 import config
 
-@Client.on_message(filters.command(["zombies", "cleanzombies", "zombie"], prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command(["zombies", "cleanzombies", "zombie"], prefixes=config.COMMAND_PREFIX) & filters.me)
 async def zombies_cmd(client: Client, message: Message):
     if message.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
         await message.edit_text("Sirf groups me."); return
@@ -19,8 +20,10 @@ async def zombies_cmd(client: Client, message: Message):
         async for member in client.get_chat_members(message.chat.id):
             scanned += 1
             u = member.user
-            if not u or not u.is_deleted: continue
-            if member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER): continue
+            if not u or not u.is_deleted:
+                continue
+            if member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER):
+                continue
             zombies.append(u.id)
     except ChatAdminRequired:
         await status.edit_text("❌ Admin rights chahiye."); return
@@ -29,23 +32,32 @@ async def zombies_cmd(client: Client, message: Message):
     if not zombies:
         await status.edit_text(f"✅ Clean — scanned `{scanned}`, zombies `0`"); return
     if not do_clean:
-        await status.edit_text(f"👻 Zombies: `{len(zombies)}` / scanned `{scanned}`\n`{config.COMMAND_PREFIX}zombies clean` | `{config.COMMAND_PREFIX}zombies ban`"); return
+        await status.edit_text(
+            f"👻 Zombies: `{len(zombies)}` / scanned `{scanned}`\n"
+            f"`{config.COMMAND_PREFIX}zombies clean` | `{config.COMMAND_PREFIX}zombies ban`"
+        )
+        return
     removed = failed = 0
     await status.edit_text(f"🧹 Cleaning `{len(zombies)}`…")
     for uid in zombies:
         try:
             await client.ban_chat_member(message.chat.id, uid)
             if not permanent_ban:
-                try: await client.unban_chat_member(message.chat.id, uid)
-                except Exception: pass
+                try:
+                    await client.unban_chat_member(message.chat.id, uid)
+                except Exception:
+                    pass
             removed += 1
         except FloodWait as e:
             await asyncio.sleep(min(e.value, 20) + 1)
             try:
                 await client.ban_chat_member(message.chat.id, uid)
-                if not permanent_ban: await client.unban_chat_member(message.chat.id, uid)
+                if not permanent_ban:
+                    await client.unban_chat_member(message.chat.id, uid)
                 removed += 1
-            except Exception: failed += 1
-        except Exception: failed += 1
+            except Exception:
+                failed += 1
+        except Exception:
+            failed += 1
         await asyncio.sleep(0.2)
     await status.edit_text(f"✅ Removed `{removed}` | Failed `{failed}`")

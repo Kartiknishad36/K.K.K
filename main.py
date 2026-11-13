@@ -70,6 +70,16 @@ async def main():
     me = await app.get_me()
     logger.info(f"UserBot started as {me.first_name} (@{me.username}) [{me.id}]")
 
+    try:
+        total_handlers = sum(len(g) for g in app.dispatcher.groups.values())
+        logger.info(f"Registered handlers: {total_handlers} across {len(app.dispatcher.groups)} groups")
+        if total_handlers < 5:
+            logger.error(
+                "TOO FEW HANDLERS — plugins used @Client.on_message after Client() was created. Use @app.on_message."
+            )
+    except Exception as e:
+        logger.warning(f"Could not count handlers: {e}")
+
     if config.OWNER_ID and me.id != config.OWNER_ID:
         logger.warning(f"Session user {me.id} != OWNER_ID {config.OWNER_ID}")
 

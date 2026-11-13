@@ -1,4 +1,5 @@
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message
 import config
 
@@ -12,7 +13,7 @@ if config.ENABLE_AI and config.OPENAI_API_KEY:
         openai_client = None
 
 
-@Client.on_message(filters.command("ai", prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command("ai", prefixes=config.COMMAND_PREFIX) & filters.me)
 async def ai_chat(client: Client, message: Message):
     if not config.ENABLE_AI or not openai_client:
         await message.edit_text(

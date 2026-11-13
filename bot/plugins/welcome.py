@@ -1,80 +1,73 @@
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message, ChatMemberUpdated
 from pyrogram.enums import ChatMemberStatus
 import config
 from bot.database import db
 
 
-@Client.on_message(filters.command("setwelcome", prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command("setwelcome", prefixes=config.COMMAND_PREFIX) & filters.me)
 async def set_welcome(client: Client, message: Message):
-    if len(message.command) < 2 and not message.reply_to_message:
+    text = " ".join(message.command[1:]) if len(message.command) > 1 else ""
+    if not text and message.reply_to_message:
+        text = message.reply_to_message.text or ""
+    if not text:
         await message.edit_text(
-            f"Usage: `{config.COMMAND_PREFIX}setwelcome <message>`\n\n"
-            "Variables you can use:\n"
-            "• `{mention}` - Mentions the user\n"
-            "• `{name}` - User's first name\n"
-            "• `{id}` - User ID\n"
-            "• `{chat}` - Chat title"
+            f"Usage: `{config.COMMAND_PREFIX}setwelcome Welcome {{mention}} to {{chat}}!`\n"
+            f"Vars: {{mention}} {{name}} {{id}} {{chat}}"
         )
         return
-
-    if message.reply_to_message:
-        text = message.reply_to_message.text or message.reply_to_message.caption or ""
-    else:
-        text = message.text.split(None, 1)[1]
-
     await db.set_welcome(message.chat.id, text, enabled=True)
-    await message.edit_text("✅ Welcome message set successfully!")
+    await message.edit_text("✅ Welcome message set.")
 
 
-@Client.on_message(filters.command("welcome", prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command("welcome", prefixes=config.COMMAND_PREFIX) & filters.me)
 async def toggle_welcome(client: Client, message: Message):
+    arg = message.command[1].lower() if len(message.command) > 1 else ""
     data = await db.get_welcome(message.chat.id)
-
-    if not data:
-        # Set default
-        await db.set_welcome(message.chat.id, config.WELCOME_DEFAULT, enabled=True)
-        await message.edit_text("✅ Welcome enabled with default message.")
+    if arg in ("on", "off"):
+        enabled = arg == "on"
+        if data:
+            await db.toggle_welcome(message.chat.id, enabled)
+        else:
+            await db.set_welcome(message.chat.id, config.WELCOME_DEFAULT, enabled=enabled)
+        await message.edit_text(f"Welcome **{'ON' if enabled else 'OFF'}**")
         return
+    if data:
+        state = "ON" if data.get("enabled") else "OFF"
+        await message.edit_text(f"Welcome is **{state}**\n`{data.get('message')}`")
+    else:
+        await message.edit_text("No welcome set. Use setwelcome.")
 
-    new_state = not bool(data["enabled"])
-    await db.toggle_welcome(message.chat.id, new_state)
-    status = "enabled" if new_state else "disabled"
-    await message.edit_text(f"✅ Welcome messages **{status}**.")
 
-
-@Client.on_chat_member_updated()
-async def welcome_new_member(client: Client, update: ChatMemberUpdated):
+@app.on_chat_member_updated()
+async def welcome_handler(client: Client, update: ChatMemberUpdated):
     if not config.ENABLE_WELCOME:
         return
-
-    # Only care about new joins
-    old = update.old_chat_member
-    new = update.new_chat_member
-
-    if not new or not new.user:
+    if not update.new_chat_member or not update.new_chat_member.user:
         return
-
-    # User joined
-    if (old is None or old.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]) and \
-       new.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED]:
-
-        chat_id = update.chat.id
-        data = await db.get_welcome(chat_id)
-
-        if not data or not data["enabled"]:
-            return
-
-        user = new.user
-        msg = data["message"] or config.WELCOME_DEFAULT
-
-        # Replace variables
-        msg = msg.replace("{mention}", user.mention)
-        msg = msg.replace("{name}", user.first_name or "User")
-        msg = msg.replace("{id}", str(user.id))
-        msg = msg.replace("{chat}", update.chat.title or "the group")
-
-        try:
-            await client.send_message(chat_id, msg)
-        except Exception:
-            pass
+    user = update.new_chat_member.user
+    if user.is_bot:
+        return
+    old = update.old_chat_member.status if update.old_chat_member else None
+    new = update.new_chat_member.status
+    if new not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR):
+        return
+    if old not in (None, ChatMemberStatus.LEFT, ChatMemberStatus.BANNED):
+        return
+    data = await db.get_welcome(update.chat.id)
+    if not data or not data.get("enabled"):
+        return
+    tpl = data.get("message") or config.WELCOME_DEFAULT
+    name = user.first_name or "User"
+    mention = f"[{name}](tg://user?id={user.id})"
+    text = (
+        tpl.replace("{mention}", mention)
+        .replace("{name}", name)
+        .replace("{id}", str(user.id))
+        .replace("{chat}", update.chat.title or "Group")
+    )
+    try:
+        await client.send_message(update.chat.id, text)
+    except Exception:
+        pass

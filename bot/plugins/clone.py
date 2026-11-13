@@ -1,20 +1,14 @@
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message
 import config
 from bot.database import db
 
-# Simple in-memory clone mappings: source_chat_id -> [target_chat_ids]
 CLONE_MAP = {}
 
 
-@Client.on_message(filters.command("clone", prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command("clone", prefixes=config.COMMAND_PREFIX) & filters.me)
 async def set_clone(client: Client, message: Message):
-    """
-    Usage:
-    .clone <target_chat_id>     - Clone current chat messages to target
-    .clone off                  - Stop cloning from this chat
-    .clones                     - Show active clones
-    """
     if len(message.command) < 2:
         await message.edit_text(
             f"**Message Cloner**\n\n"
@@ -54,7 +48,7 @@ async def set_clone(client: Client, message: Message):
     )
 
 
-@Client.on_message(filters.command("clones", prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command("clones", prefixes=config.COMMAND_PREFIX) & filters.me)
 async def list_clones(client: Client, message: Message):
     if not CLONE_MAP:
         await message.edit_text("No active clones.")
@@ -66,7 +60,7 @@ async def list_clones(client: Client, message: Message):
     await message.edit_text(text)
 
 
-@Client.on_message(~filters.me & ~filters.service & ~filters.command([], prefixes=config.COMMAND_PREFIX), group=30)
+@app.on_message(~filters.me & ~filters.service & ~filters.command([], prefixes=config.COMMAND_PREFIX), group=30)
 async def clone_handler(client: Client, message: Message):
     source = message.chat.id
     if source not in CLONE_MAP:
@@ -77,5 +71,4 @@ async def clone_handler(client: Client, message: Message):
         try:
             await message.copy(target)
         except Exception:
-            # Ignore flood waits / errors for now
             pass

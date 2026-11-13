@@ -1,11 +1,12 @@
 import asyncio
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message
 import config
 from bot.database import db
 
 
-@Client.on_message(filters.command("autodel", prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command("autodel", prefixes=config.COMMAND_PREFIX) & filters.me)
 async def set_autodelete(client: Client, message: Message):
     if len(message.command) < 2:
         data = await db.get_autodelete(message.chat.id)
@@ -34,7 +35,7 @@ async def set_autodelete(client: Client, message: Message):
         if delay < 10:
             await message.edit_text("Minimum delay is 10 seconds.")
             return
-        if delay > 86400 * 7:  # 7 days max
+        if delay > 86400 * 7:
             await message.edit_text("Maximum delay is 7 days.")
             return
     except ValueError:
@@ -45,8 +46,7 @@ async def set_autodelete(client: Client, message: Message):
     await message.edit_text(f"✅ AutoDelete **enabled**\nMessages will be deleted after `{delay}` seconds.")
 
 
-# Handler that schedules deletion
-@Client.on_message(filters.group & ~filters.service, group=15)
+@app.on_message(filters.group & ~filters.service, group=15)
 async def autodelete_handler(client: Client, message: Message):
     if not config.ENABLE_AUTODELETE:
         return

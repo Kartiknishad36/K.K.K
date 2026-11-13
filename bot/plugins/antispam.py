@@ -1,15 +1,15 @@
 import time
 from collections import defaultdict
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message
 import config
 from bot.database import db
 
-# In-memory flood tracker: { (chat_id, user_id): [timestamps] }
 flood_tracker = defaultdict(list)
 
 
-@Client.on_message(filters.group & ~filters.me & ~filters.bot & ~filters.service, group=20)
+@app.on_message(filters.group & ~filters.me & ~filters.bot & ~filters.service, group=20)
 async def anti_flood(client: Client, message: Message):
     if not config.ENABLE_ANTISPAM:
         return
@@ -22,12 +22,10 @@ async def anti_flood(client: Client, message: Message):
     key = (chat_id, user_id)
     now = time.time()
 
-    # Clean old timestamps
     flood_tracker[key] = [t for t in flood_tracker[key] if now - t < config.ANTISPAM_TIME_WINDOW]
     flood_tracker[key].append(now)
 
     if len(flood_tracker[key]) >= config.ANTISPAM_MAX_MESSAGES:
-        # Flood detected
         warnings = await db.add_warning(user_id, chat_id)
 
         try:
@@ -55,11 +53,10 @@ async def anti_flood(client: Client, message: Message):
             except Exception:
                 pass
 
-        # Reset tracker
         flood_tracker[key].clear()
 
 
-@Client.on_message(filters.command("resetwarns", prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command("resetwarns", prefixes=config.COMMAND_PREFIX) & filters.me)
 async def reset_warns(client: Client, message: Message):
     if not message.reply_to_message or not message.reply_to_message.from_user:
         await message.edit_text("Reply to a user to reset their warnings.")

@@ -1,1 +1,1 @@
-"""Disabled — individual plugins restored."""
+"""Disabled — full individual plugins restored."""

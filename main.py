@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import time
+from collections import OrderedDict
 from pathlib import Path
 
 from pyrogram import filters
@@ -13,6 +14,30 @@ import config
 
 PLUGINS_DIR = Path(__file__).parent / "bot" / "plugins"
 P = config.COMMAND_PREFIX or "."
+
+
+def patch_dispatcher_sync():
+    """
+    Pyrogram 2.x dispatcher.add_handler uses loop.create_task(async fn).
+    Before app.start() the task often never runs → 0 handlers.
+    Patch to synchronous append so decorators + add_handler work immediately.
+    """
+    dispatcher = app.dispatcher
+
+    def sync_add_handler(handler, group: int = 0):
+        if group not in dispatcher.groups:
+            dispatcher.groups[group] = []
+            dispatcher.groups = OrderedDict(sorted(dispatcher.groups.items()))
+        dispatcher.groups[group].append(handler)
+
+    def sync_remove_handler(handler, group: int = 0):
+        if group not in dispatcher.groups:
+            raise ValueError(f"Group {group} does not exist. Handler was not removed.")
+        dispatcher.groups[group].remove(handler)
+
+    dispatcher.add_handler = sync_add_handler
+    dispatcher.remove_handler = sync_remove_handler
+    logger.info("Dispatcher patched: sync add_handler (Pyrogram 2.x fix)")
 
 
 def load_plugins():
@@ -34,11 +59,9 @@ def load_plugins():
     return loaded
 
 
-def _count_handlers() -> int:
+def count_handlers() -> int:
     try:
-        groups = getattr(app.dispatcher, "groups", None)
-        if groups is None:
-            return -1
+        groups = getattr(app.dispatcher, "groups", {}) or {}
         total = 0
         for g in groups.values():
             try:
@@ -71,7 +94,8 @@ async def cmd_alive(client, message: Message):
         f"**User:** {me.first_name}\n"
         f"**ID:** `{me.id}`\n"
         f"**Username:** @{me.username or 'None'}\n"
-        f"**Prefix:** `{P}`"
+        f"**Prefix:** `{P}`\n"
+        f"**Handlers:** `{count_handlers()}`"
     )
     try:
         await message.edit_text(text)
@@ -87,13 +111,13 @@ async def cmd_help(client, message: Message):
         f"**🤖 UserBot Help**\n"
         f"**Prefix:** `{P}`\n\n"
         f"`{P}ping` — latency\n"
-        f"`{P}alive` — status\n"
+        f"`{P}alive` — status + handler count\n"
         f"`{P}help` — this menu\n"
         f"`{P}id` — chat/user id\n"
         f"`{P}tagall` — tag members\n"
         f"`{P}cat` `{P}rose` — fun arts\n"
         f"`{P}afk` `{P}notes` `{P}filter`\n"
-        f"\n_More commands load from plugins._"
+        f"\n_Plugins load with sync dispatcher patch._"
     )
     try:
         await message.edit_text(text)
@@ -106,10 +130,10 @@ async def cmd_help(client, message: Message):
 
 def register_core_handlers():
     me_cmd = filters.me
-    app.add_handler(MessageHandler(cmd_ping, filters.command(["ping", "p"], prefixes=P) & me_cmd), group=0)
-    app.add_handler(MessageHandler(cmd_alive, filters.command("alive", prefixes=P) & me_cmd), group=0)
-    app.add_handler(MessageHandler(cmd_help, filters.command(["help", "start", "menu"], prefixes=P) & me_cmd), group=0)
-    logger.info("Core handlers registered explicitly (ping/alive/help)")
+    app.add_handler(MessageHandler(cmd_ping, filters.command(["ping", "p"], prefixes=P) & me_cmd), 0)
+    app.add_handler(MessageHandler(cmd_alive, filters.command("alive", prefixes=P) & me_cmd), 0)
+    app.add_handler(MessageHandler(cmd_help, filters.command(["help", "start", "menu"], prefixes=P) & me_cmd), 0)
+    logger.info("Core handlers registered (ping/alive/help)")
 
 
 async def scheduler_worker():
@@ -139,25 +163,26 @@ async def main():
     if not config.SESSION_STRING and not (config.DATA_DIR / f"{config.SESSION_NAME}.session").exists():
         logger.warning("No SESSION_STRING — set it in env")
 
+    # CRITICAL: patch BEFORE any handler registration / plugin import
+    patch_dispatcher_sync()
+
     await db.connect()
     logger.info("Database connected.")
 
     load_plugins()
     register_core_handlers()
 
-    n_before = _count_handlers()
-    logger.info(f"Handlers after plugin load + core: {n_before}")
+    n = count_handlers()
+    logger.info(f"Handlers registered: {n}")
+    if n <= 0:
+        logger.error("Still 0 handlers after sync patch — something is very wrong")
+    else:
+        logger.info(f"OK — {n} handlers ready BEFORE start")
 
     await app.start()
     me = await app.get_me()
     logger.info(f"UserBot started as {me.first_name} (@{me.username}) [{me.id}]")
-
-    n_after = _count_handlers()
-    logger.info(f"Handlers after start: {n_after}")
-    if n_after == 0:
-        logger.error("Still 0 handlers after explicit add_handler — check Pyrogram dispatcher")
-    else:
-        logger.info(f"OK — {n_after} handlers ready")
+    logger.info(f"Handlers after start: {count_handlers()}")
 
     if config.OWNER_ID and me.id != config.OWNER_ID:
         logger.warning(f"Session {me.id} != OWNER_ID {config.OWNER_ID}")

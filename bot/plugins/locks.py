@@ -1,12 +1,13 @@
 """.lock / .unlock media|sticker|link|gif|forward|all"""
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message
 import config
 from bot.database import db
 
 LOCK_KEYS = {"media": "lock_media", "sticker": "lock_sticker", "link": "lock_link", "gif": "lock_gif", "forward": "lock_forward", "all": "lock_all"}
 
-@Client.on_message(filters.command(["lock", "unlock"], prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command(["lock", "unlock"], prefixes=config.COMMAND_PREFIX) & filters.me)
 async def lock_cmd(client: Client, message: Message):
     if message.chat.type.name not in ["GROUP", "SUPERGROUP"]:
         await message.edit_text("Sirf groups me."); return
@@ -26,7 +27,7 @@ async def lock_cmd(client: Client, message: Message):
         await db.set_chat_flag(chat_id, LOCK_KEYS[what], val)
     await message.edit_text(f"{'🔒' if val else '🔓'} **{what}** {'locked' if val else 'unlocked'}")
 
-@Client.on_message(filters.group & filters.incoming & ~filters.me & ~filters.service, group=7)
+@app.on_message(filters.group & filters.incoming & ~filters.me & ~filters.service, group=7)
 async def lock_watch(client: Client, message: Message):
     if not message.from_user or message.from_user.id == config.OWNER_ID: return
     chat_id = message.chat.id

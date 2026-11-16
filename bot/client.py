@@ -24,6 +24,8 @@ _kwargs = dict(
     api_hash=config.API_HASH,
     workdir=str(config.DATA_DIR),
     in_memory=False,
+    workers=8,
+    no_updates=False,
 )
 
 if config.SESSION_STRING and config.SESSION_STRING.strip():

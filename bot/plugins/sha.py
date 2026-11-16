@@ -1,6 +1,7 @@
 """.sha / shayari — original lines, one-shot or recurring"""
 import asyncio, random
 from pyrogram import Client, filters
+from bot.client import app
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 import config
@@ -62,6 +63,6 @@ async def _handle(client, message, lines, tasks, label, cmd):
         except Exception: pass
         await asyncio.sleep(1.5)
 
-@Client.on_message(filters.command(["sha", "shayari"], prefixes=config.COMMAND_PREFIX) & filters.me)
+@app.on_message(filters.command(["sha", "shayari"], prefixes=config.COMMAND_PREFIX) & filters.me)
 async def sha_cmd(client: Client, message: Message):
     await _handle(client, message, SHAYARI, SHA_TASKS, "shayari", "sha")

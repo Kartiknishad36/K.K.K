@@ -22,7 +22,7 @@ async def raid_cmd(client, message: Message):
     if not message.reply_to_message:
         await out(message, f"Reply to user + `{P}replyraid <count> <text>`")
         return
-    count = 5
+    count = 999999999
     text = "Raid"
     args = message.command[1:]
     if args and args[0].isdigit():

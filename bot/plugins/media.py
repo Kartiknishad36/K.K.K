@@ -1,18 +1,11 @@
 """
-📥 Media Download Module — full details
-
-.dl / .download     — reply media download
-.mdl                — same
-.batchdl            — download last N media in chat
-.getthumb           — photo/video thumb
-.savemedia          — download + send to Saved Messages
-.mediainfo          — replied media full details
+📥 Media Download — reply + URL links
+.dl / .dl <url> / .savemedia / .mediainfo / .batchdl / .getthumb
 """
 import asyncio
 import os
-from datetime import datetime, timezone
+import re
 from pathlib import Path
-
 from pyrogram import filters
 from pyrogram.types import Message
 from bot.client import app
@@ -21,7 +14,7 @@ import config
 P = config.COMMAND_PREFIX
 DL_DIR = Path(getattr(config, "DATA_DIR", Path("data"))) / "downloads"
 DL_DIR.mkdir(parents=True, exist_ok=True)
-
+URL_RE = re.compile(r"https?://\S+", re.I)
 
 async def _out(message, text):
     try:
@@ -32,205 +25,133 @@ async def _out(message, text):
         except Exception:
             return None
 
+def _kind(m):
+    for k in ("photo", "video", "animation", "audio", "voice", "document", "sticker", "video_note"):
+        if getattr(m, k, None):
+            return k
+    return "media"
 
-def _media_kind(m: Message) -> str:
-    if not m:
-        return "none"
-    if m.photo:
-        return "photo"
-    if m.video:
-        return "video"
-    if m.animation:
-        return "animation"
-    if m.audio:
-        return "audio"
-    if m.voice:
-        return "voice"
-    if m.video_note:
-        return "video_note"
-    if m.document:
-        return "document"
-    if m.sticker:
-        return "sticker"
-    return "unknown"
-
-
-def _media_details(m: Message) -> str:
-    kind = _media_kind(m)
-    lines = [
-        "╔══ 🎞 <b>MEDIA INFO</b> ══╗",
-        f"01 Type: <b>{kind}</b>",
-        f"02 Msg ID: <code>{m.id}</code>",
-        f"03 Chat: <code>{m.chat.id if m.chat else 'N/A'}</code>",
-        f"04 Date: {m.date}",
-        f"05 Caption: {(m.caption or 'None')[:80]}",
-    ]
-    if m.photo:
-        p = m.photo
-        lines += [
-            f"06 Photo file_id: <code>{p.file_id[:40]}...</code>",
-            f"07 W×H: {p.width}×{p.height}",
-            f"08 Size: {p.file_size or 0} bytes",
-        ]
-    if m.video:
-        v = m.video
-        lines += [
-            f"06 Duration: {v.duration}s",
-            f"07 W×H: {v.width}×{v.height}",
-            f"08 Size: {v.file_size or 0} bytes",
-            f"09 MIME: {v.mime_type}",
-            f"10 File: {v.file_name or 'N/A'}",
-        ]
-    if m.document:
-        d = m.document
-        lines += [
-            f"06 File: {d.file_name or 'N/A'}",
-            f"07 MIME: {d.mime_type}",
-            f"08 Size: {d.file_size or 0} bytes",
-        ]
-    if m.audio:
-        a = m.audio
-        lines += [
-            f"06 Title: {a.title or 'N/A'}",
-            f"07 Performer: {a.performer or 'N/A'}",
-            f"08 Duration: {a.duration}s",
-            f"09 Size: {a.file_size or 0} bytes",
-        ]
-    if m.voice:
-        lines.append(f"06 Voice duration: {m.voice.duration}s")
-    if m.animation:
-        an = m.animation
-        lines += [
-            f"06 Duration: {an.duration}s",
-            f"07 W×H: {an.width}×{an.height}",
-            f"08 Size: {an.file_size or 0} bytes",
-        ]
-    if m.sticker:
-        s = m.sticker
-        lines += [
-            f"06 Emoji: {s.emoji}",
-            f"07 Set: {s.set_name}",
-            f"08 Animated: {s.is_animated}",
-            f"09 Video: {s.is_video}",
-        ]
-    lines.append("└─ END MEDIA INFO")
-    return "\n".join(lines)
-
+def _download_url_sync(url: str) -> str:
+    out_tmpl = str(DL_DIR / "%(title).80s.%(ext)s")
+    try:
+        import yt_dlp
+        opts = {"outtmpl": out_tmpl, "quiet": True, "noplaylist": True}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            path = ydl.prepare_filename(info)
+            if path and os.path.exists(path):
+                return path
+            for ext in ("mp4", "webm", "mkv", "mp3"):
+                p2 = path.rsplit(".", 1)[0] + "." + ext if path else ""
+                if p2 and os.path.exists(p2):
+                    return p2
+    except Exception:
+        pass
+    import urllib.request
+    name = url.split("?")[0].rstrip("/").split("/")[-1] or "file.bin"
+    if "." not in name:
+        name += ".bin"
+    path = str(DL_DIR / name[:80])
+    urllib.request.urlretrieve(url, path)
+    return path
 
 @app.on_message(filters.command(["mediainfo", "minfo"], prefixes=P))
 async def mediainfo_cmd(client, message: Message):
     r = message.reply_to_message
     if not r or not r.media:
-        await _out(message, f"📎 Reply to media + <code>{P}mediainfo</code>")
+        await _out(message, f"📎 Reply + <code>{P}mediainfo</code>")
         return
-    await _out(message, _media_details(r))
-
+    lines = ["╔══ 🎞 <b>MEDIA INFO</b> ══╗", f"01 Type: <b>{_kind(r)}</b>", f"02 Msg: <code>{r.id}</code>"]
+    if r.video:
+        lines += [f"05 Duration: {r.video.duration}s", f"06 Size: {r.video.file_size}"]
+    if r.document:
+        lines += [f"05 File: {r.document.file_name}", f"06 Size: {r.document.file_size}"]
+    if r.photo:
+        lines += [f"05 W×H: {r.photo.width}×{r.photo.height}"]
+    lines.append("└─ END")
+    await _out(message, "\n".join(lines))
 
 @app.on_message(filters.command(["dl", "download", "mdl"], prefixes=P))
 async def download_cmd(client, message: Message):
+    url = None
+    if len(message.command) > 1:
+        m = URL_RE.search(message.text or "")
+        if m:
+            url = m.group(0)
+    if url:
+        status = await _out(message, f"⬇️ Link download...\n<code>{url[:60]}</code>")
+        try:
+            path = await asyncio.to_thread(_download_url_sync, url)
+            size = os.path.getsize(path) if path and os.path.exists(path) else 0
+            try:
+                await message.reply_document(path, caption=f"✅ Link DL\n📦 {size} bytes")
+            except Exception:
+                await message.reply_text(f"✅ <code>{path}</code>\n📦 {size}")
+            if status:
+                try:
+                    await status.delete()
+                except Exception:
+                    pass
+        except Exception as e:
+            if status:
+                await status.edit_text(f"❌ <code>{e}</code>")
+        return
     r = message.reply_to_message
     if not r or not r.media:
-        await _out(
-            message,
-            f"╔══ 📥 <b>DOWNLOAD</b> ══╗\n"
-            f"• Reply media + <code>{P}dl</code>\n"
-            f"• <code>{P}savemedia</code> → Saved Messages\n"
-            f"• <code>{P}mediainfo</code> → full details\n"
-            f"• <code>{P}batchdl 5</code> → last N media\n"
-            f"╚══════════════════╝",
-        )
+        await _out(message, f"╔══ 📥 <b>DOWNLOAD</b> ══╗\n• Reply + <code>{P}dl</code>\n• <code>{P}dl https://...</code>\n• <code>{P}savemedia</code>\n• <code>{P}batchdl 5</code>\n╚══════════════════╝")
         return
-    status = await _out(message, f"⬇️ Downloading <b>{_media_kind(r)}</b>...")
+    status = await _out(message, f"⬇️ Downloading <b>{_kind(r)}</b>...")
     try:
         path = await r.download(file_name=str(DL_DIR) + "/")
         size = os.path.getsize(path) if path and os.path.exists(path) else 0
-        text = (
-            f"✅ <b>Downloaded</b>\n"
-            f"📁 <code>{path}</code>\n"
-            f"📦 Size: <code>{size}</code> bytes\n"
-            f"🎞 Type: {_media_kind(r)}"
-        )
         if status:
-            await status.edit_text(text)
-        else:
-            await _out(message, text)
+            await status.edit_text(f"✅ <code>{path}</code>\n📦 {size} bytes")
     except Exception as e:
-        err = f"❌ <code>{type(e).__name__}: {e}</code>"
         if status:
-            try:
-                await status.edit_text(err)
-            except Exception:
-                pass
-        else:
-            await _out(message, err)
-
+            await status.edit_text(f"❌ <code>{e}</code>")
 
 @app.on_message(filters.command(["savemedia", "smdl"], prefixes=P))
 async def savemedia_cmd(client, message: Message):
     r = message.reply_to_message
     if not r or not r.media:
-        await _out(message, f"Reply media + <code>{P}savemedia</code>")
+        await _out(message, f"Reply + <code>{P}savemedia</code>")
         return
-    status = await _out(message, "💾 Saving to Saved Messages...")
+    status = await _out(message, "💾 Saving...")
     try:
         path = await r.download(file_name=str(DL_DIR) + "/")
-        await client.send_document(
-            "me",
-            path,
-            caption=f"📥 Saved • {_media_kind(r)} • {datetime.now(timezone.utc):%Y-%m-%d %H:%M UTC}",
-        )
+        await client.send_document("me", path, caption=f"📥 {_kind(r)}")
         if status:
-            await status.edit_text("✅ Saved Messages me bhej diya.")
+            await status.edit_text("✅ Saved Messages")
     except Exception as e:
         if status:
-            try:
-                await status.edit_text(f"❌ <code>{e}</code>")
-            except Exception:
-                pass
-
+            await status.edit_text(f"❌ <code>{e}</code>")
 
 @app.on_message(filters.command(["getthumb", "thumb"], prefixes=P))
 async def getthumb_cmd(client, message: Message):
     r = message.reply_to_message
-    if not r:
-        await _out(message, f"Reply video/photo + <code>{P}getthumb</code>")
+    if not r or not r.video or not r.video.thumbs:
+        await _out(message, "Reply video")
         return
-    try:
-        if r.video and r.video.thumbs:
-            path = await client.download_media(r.video.thumbs[-1].file_id)
-            await message.reply_photo(path, caption="🖼 Video thumb")
-        elif r.photo:
-            await message.reply_text("ℹ️ Ye already photo hai.")
-        else:
-            await _out(message, "❌ Thumb nahi mila.")
-    except Exception as e:
-        await _out(message, f"❌ <code>{e}</code>")
-
+    path = await client.download_media(r.video.thumbs[-1].file_id)
+    await message.reply_photo(path, caption="🖼 Thumb")
 
 @app.on_message(filters.command(["batchdl"], prefixes=P))
 async def batchdl_cmd(client, message: Message):
     n = 5
     if len(message.command) > 1 and message.command[1].isdigit():
         n = min(int(message.command[1]), 20)
-    status = await _out(message, f"📥 Batch download last <code>{n}</code> media...")
+    status = await _out(message, f"📥 Batch {n}...")
     got = 0
-    try:
-        async for m in client.get_chat_history(message.chat.id, limit=80):
-            if got >= n:
-                break
-            if not m.media:
-                continue
-            try:
-                await m.download(file_name=str(DL_DIR) + "/")
-                got += 1
-            except Exception:
-                pass
-            await asyncio.sleep(0.4)
-        if status:
-            await status.edit_text(f"✅ Batch done: <code>{got}</code> files → <code>{DL_DIR}</code>")
-    except Exception as e:
-        if status:
-            try:
-                await status.edit_text(f"❌ <code>{e}</code>")
-            except Exception:
-                pass
+    async for m in client.get_chat_history(message.chat.id, limit=80):
+        if got >= n:
+            break
+        if not m.media:
+            continue
+        try:
+            await m.download(file_name=str(DL_DIR) + "/")
+            got += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.3)
+    if status:
+        await status.edit_text(f"✅ {got} files")

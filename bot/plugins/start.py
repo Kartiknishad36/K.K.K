@@ -2,143 +2,159 @@ from pyrogram import filters
 from pyrogram.types import Message
 from bot.client import app
 import config
+import time
+
+P = config.COMMAND_PREFIX
 
 HELP_TEXT = f"""
-**╔══════════════════════════╗**
-**║     🤖  USERBOT HELP     ║**
-**╚══════════════════════════╝**
+╔══════════════════════════╗
+║   🤖  <b>K.K.K USERBOT</b>   ║
+║      ✨ Premium Menu ✨     ║
+╚══════════════════════════╝
 
-**Prefix :** `{config.COMMAND_PREFIX}`
-**Total Commands :** 80+
-
-────────────────────
-**📌 BASIC**
-────────────────────
-`{config.COMMAND_PREFIX}help` — Show this menu
-`{config.COMMAND_PREFIX}ping` — Check response time
-`{config.COMMAND_PREFIX}alive` — Bot status
-`{config.COMMAND_PREFIX}id` — Get chat / user ID
-`{config.COMMAND_PREFIX}stats` — Account statistics
+🔹 <b>Prefix:</b> <code>{P}</code>
+🔹 <b>Modules:</b> full loaded
 
 ────────────────────
-**😴 AFK**
+📌 <b>BASIC</b>
 ────────────────────
-`{config.COMMAND_PREFIX}afk [reason]` — Enable AFK mode
-`{config.COMMAND_PREFIX}unafk` — Disable AFK
+• <code>{P}help</code> — yeh menu
+• <code>{P}ping</code> — speed check
+• <code>{P}alive</code> — status
+• <code>{P}id</code> — chat / user id
+• <code>{P}stats</code> — account stats
 
 ────────────────────
-**📝 NOTES**
+🔐 <b>MULTI LOGIN</b>
 ────────────────────
-`{config.COMMAND_PREFIX}save <name> <text>` — Save note
-`{config.COMMAND_PREFIX}get <name>` — Get note
-`{config.COMMAND_PREFIX}clear <name>` — Delete note
-`{config.COMMAND_PREFIX}notes` — List all notes
+• <code>{P}login</code> — login help
+• <code>{P}addsession</code> — dusra account add
+• <code>{P}logins</code> — saved accounts
+• <code>{P}delsession</code> — account hatao
+• <code>{P}mylogin</code> — main account
 
 ────────────────────
-**🔍 FILTERS**
+📢 <b>BROADCAST</b>
 ────────────────────
-`{config.COMMAND_PREFIX}filter <key> <reply>` — Add filter
-`{config.COMMAND_PREFIX}stop <key>` — Remove filter
-`{config.COMMAND_PREFIX}filters` — List filters
+• <code>{P}broadcast</code> — groups + channels
+• <code>{P}gcast</code> — only groups
+• <code>{P}dmcast</code> — only DMs
+• <code>{P}stopcast</code> — stop
+• <code>{P}caststatus</code> — status
 
 ────────────────────
-**👋 WELCOME**
+📥 <b>MEDIA</b>
 ────────────────────
-`{config.COMMAND_PREFIX}setwelcome <msg>` — Set welcome message
-`{config.COMMAND_PREFIX}welcome` — Toggle welcome on/off
+• <code>{P}dl</code> — reply download
+• <code>{P}savemedia</code> — Saved Messages
+• <code>{P}mediainfo</code> — full media info
+• <code>{P}batchdl</code> — last N media
+• <code>{P}getthumb</code> — video thumb
 
 ────────────────────
-**🗑️ AUTO DELETE**
+😴 <b>AFK</b>
 ────────────────────
-`{config.COMMAND_PREFIX}autodel <seconds>` — Enable auto-delete
-`{config.COMMAND_PREFIX}autodel off` — Disable
+• <code>{P}afk</code> / <code>{P}unafk</code>
 
 ────────────────────
-**⏰ SCHEDULER**
+📝 <b>NOTES & FILTERS</b>
 ────────────────────
-`{config.COMMAND_PREFIX}schedule <time> <msg>` — Schedule message
-`{config.COMMAND_PREFIX}schedules` — List pending
+• <code>{P}save</code> <code>{P}get</code> <code>{P}notes</code>
+• <code>{P}filter</code> <code>{P}stop</code> <code>{P}filters</code>
 
 ────────────────────
-**🛡️ ADMIN**
+👋 <b>WELCOME / AUTODEL</b>
 ────────────────────
-`{config.COMMAND_PREFIX}ban` `unban` `kick` `mute` `unmute`
-`{config.COMMAND_PREFIX}promote` `demote` `pin` `unpin` `purge`
-`{config.COMMAND_PREFIX}gban` `ungban`
+• <code>{P}setwelcome</code> <code>{P}welcome</code>
+• <code>{P}autodel</code> <code>{P}cmddel</code>
 
 ────────────────────
-**🔄 CLONE**
+🛡️ <b>ADMIN</b>
 ────────────────────
-`{config.COMMAND_PREFIX}clone` `clone off` `clones`
+• ban unban kick mute unmute
+• promote demote pin purge gban
 
 ────────────────────
-**🛠️ TOOLS**
+👥 <b>TAGALL</b>
 ────────────────────
-`{config.COMMAND_PREFIX}info` / `whois` — User information
-`{config.COMMAND_PREFIX}tr` `dl` `join` `leave` `broadcast`
+• <code>{P}tagall</code> <code>{P}tag</code> <code>{P}tagadmin</code>
+• <code>{P}tagallstop</code>
 
 ────────────────────
-**📢 TAGALL**
+🔥 <b>BRO / FUN</b>
 ────────────────────
-`{config.COMMAND_PREFIX}tagall` `tag` `tagadmin` `tagallstop`
+• <code>{P}bro</code> <code>{P}broall</code> <code>{P}unbro</code>
+• <code>{P}cat</code> <code>{P}rose</code> <code>{P}hacker</code>
+• <code>{P}moon</code> <code>{P}heart</code>
 
 ────────────────────
-**🎨 FUN**
+🛠️ <b>TOOLS</b>
 ────────────────────
-`{config.COMMAND_PREFIX}cat` `rose` `hacker` `moon` `heart`
-`{config.COMMAND_PREFIX}ok` `vip` `king` `pro` `funhelp`
+• <code>{P}info</code> <code>{P}whois</code>
+• <code>{P}join</code> <code>{P}leave</code> <code>{P}invite</code>
+• <code>{P}pclone</code> <code>{P}back</code>
+• <code>{P}sha</code> <code>{P}time</code> <code>{P}echo</code>
 
-**Made with ❤️ | Use Responsibly**
+╚══════════════════════════╝
 """
 
-@app.on_message(filters.command(["help", "start"], prefixes=config.COMMAND_PREFIX))
-async def help_command(client, message: Message):
-    try:
-        await message.edit_text(HELP_TEXT)
-    except Exception:
-        await message.reply_text(HELP_TEXT)
 
-@app.on_message(filters.command("ping", prefixes=config.COMMAND_PREFIX))
-async def ping_command(client, message: Message):
-    import time
-    start = time.time()
+async def _out(message, text):
     try:
-        msg = await message.edit_text("🏓 Pinging...")
-        end = time.time()
-        await msg.edit_text(f"🏓 **Pong!**\n`{round((end - start) * 1000, 2)} ms`")
+        return await message.reply_text(text)
     except Exception:
-        await message.reply_text("🏓 **Pong!**")
+        try:
+            return await message.edit_text(text)
+        except Exception:
+            return None
 
-@app.on_message(filters.command("alive", prefixes=config.COMMAND_PREFIX))
-async def alive_command(client, message: Message):
+
+@app.on_message(filters.command(["help", "menu", "cmds"], prefixes=P))
+async def help_cmd(client, message: Message):
+    await _out(message, HELP_TEXT)
+
+
+@app.on_message(filters.command(["ping"], prefixes=P))
+async def ping_cmd(client, message: Message):
+    t1 = time.time()
+    m = await _out(message, "🏓 pong...")
+    t2 = time.time()
+    if m:
+        try:
+            await m.edit_text(f"🏓 <b>Pong</b>\n⚡ <code>{(t2 - t1) * 1000:.0f} ms</code>")
+        except Exception:
+            pass
+
+
+@app.on_message(filters.command(["alive"], prefixes=P))
+async def alive_cmd(client, message: Message):
     me = await client.get_me()
-    text = (
-        f"**✅ UserBot is Alive!**\n\n"
-        f"**User :** {me.first_name}\n"
-        f"**ID :** `{me.id}`\n"
-        f"**Username :** @{me.username if me.username else 'None'}\n"
-        f"**Prefix :** `{config.COMMAND_PREFIX}`"
+    await _out(
+        message,
+        f"╔══ ✅ <b>ALIVE</b> ══╗\n"
+        f"👤 {me.first_name}\n"
+        f"🆔 <code>{me.id}</code>\n"
+        f"🔹 Prefix: <code>{P}</code>\n"
+        f"💎 Premium: {getattr(me, 'is_premium', False)}\n"
+        f"╚══════════════╝",
     )
-    try:
-        await message.edit_text(text)
-    except Exception:
-        await message.reply_text(text)
 
-@app.on_message(filters.command("id", prefixes=config.COMMAND_PREFIX))
-async def id_command(client, message: Message):
+
+@app.on_message(filters.command(["id"], prefixes=P))
+async def id_cmd(client, message: Message):
     if message.reply_to_message and message.reply_to_message.from_user:
-        user = message.reply_to_message.from_user
-        text = (
-            f"**User ID :** `{user.id}`\n"
-            f"**Chat ID :** `{message.chat.id}`\n"
-            f"**Message ID :** `{message.reply_to_message.id}`"
+        u = message.reply_to_message.from_user
+        await _out(
+            message,
+            f"👤 <b>{u.first_name}</b>\n"
+            f"🆔 <code>{u.id}</code>\n"
+            f"💬 Chat: <code>{message.chat.id}</code>\n"
+            f"🔗 @{u.username or 'None'}",
         )
     else:
-        text = (
-            f"**Chat ID :** `{message.chat.id}`\n"
-            f"**Your ID :** `{message.from_user.id if message.from_user else 'N/A'}`"
+        await _out(
+            message,
+            f"💬 Chat: <code>{message.chat.id}</code>\n"
+            f"👤 You: <code>{message.from_user.id if message.from_user else 'N/A'}</code>\n"
+            f"📂 Type: {message.chat.type}",
         )
-    try:
-        await message.edit_text(text)
-    except Exception:
-        await message.reply_text(text)

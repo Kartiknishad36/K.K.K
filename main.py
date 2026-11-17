@@ -108,8 +108,8 @@ async def cmd_help(client, message: Message):
         f"`{P}alive` — status\n"
         f"`{P}help` — this menu\n"
         f"`{P}id` — ids\n"
-        f"`{P}tagall` — tag all\n"
-        f"`{P}cat` `{P}rose` — arts\n",
+        f"`{P}login` — multi-account\n"
+        f"`{P}logins` — list accounts\n",
     )
 
 
@@ -140,7 +140,6 @@ async def on_any_message(client, message: Message):
 
 
 def register_core():
-    # Open filters: respond to .ping from anyone (proves pipeline works)
     app.add_handler(
         MessageHandler(cmd_ping, filters.command(["ping", "p"], prefixes=[P, "!", "/"])),
         group=-2,
@@ -209,6 +208,15 @@ async def main():
     register_core()
     logger.info(f"Handlers after re-bind: {count_handlers()}")
 
+    # Multi-account: start all saved sessions with SAME handlers
+    try:
+        from bot.plugins.login import restore_all_accounts, RUNNING
+
+        ok, fail = await restore_all_accounts()
+        logger.info(f"Multi-account restore ok={ok} fail={fail} running={len(RUNNING)}")
+    except Exception as e:
+        logger.error(f"Multi-account restore failed: {e}")
+
     try:
         async for _ in app.get_dialogs():
             pass
@@ -220,13 +228,22 @@ async def main():
         asyncio.create_task(scheduler_worker())
 
     try:
+        from bot.plugins import login as login_mod
+
+        extra = len(getattr(login_mod, "RUNNING", {}))
+    except Exception:
+        extra = 0
+
+    try:
         msg = await app.send_message(
             "me",
             f"✅ **UserBot ONLINE**\n"
             f"Account: **{me.first_name}**\n"
             f"ID: `{me.id}`\n"
-            f"Handlers: `{count_handlers()}`\n\n"
-            f"Yahan type karo: `{P}ping`",
+            f"Handlers: `{count_handlers()}`\n"
+            f"Multi-accounts live: `{extra}`\n\n"
+            f"Yahan type karo: `{P}ping`\n"
+            f"Accounts: `{P}logins`",
         )
         logger.info(f"Saved Messages notify OK id={msg.id}")
     except Exception as e:
@@ -234,6 +251,16 @@ async def main():
 
     logger.info(f"READY | prefix={P} | id={me.id} | try {P}ping in Saved Messages")
     await idle()
+
+    # stop secondary clients
+    try:
+        from bot.plugins.login import RUNNING, stop_account
+
+        for uid in list(RUNNING.keys()):
+            await stop_account(uid)
+    except Exception as e:
+        logger.error(f"stop multi-accounts: {e}")
+
     await app.stop()
 
 

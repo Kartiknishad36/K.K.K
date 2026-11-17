@@ -42,7 +42,7 @@ async def autodel_cmd(client, message: Message):
             f"Chat messages: <code>{cur if cur else 'OFF'}</code>\n"
             f"Own commands: <code>{CMD_DEL_SEC or 'OFF'}s</code>\n\n"
             f"Usage:\n"
-            f"• <code>{P}autodel 5</code> — group msgs 5s me delete\n"
+            f"• <code>{P}autodel 1</code> — group msgs 1s me delete\n"
             f"• <code>{P}autodel off</code>\n"
             f"• <code>{P}cmddel 1</code> — command msg auto-delete\n"
             f"• <code>{P}cmddel off</code>\n"

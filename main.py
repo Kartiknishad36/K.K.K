@@ -94,7 +94,8 @@ async def cmd_alive(client, message: Message):
         f"**User:** {me.first_name}\n"
         f"**ID:** `{me.id}`\n"
         f"**Prefix:** `{P}`\n"
-        f"**Handlers:** `{count_handlers()}`",
+        f"**Handlers:** `{count_handlers()}`\n"
+        f"**Access:** only this ID + OWNER",
     )
 
 
@@ -103,7 +104,8 @@ async def cmd_help(client, message: Message):
     await safe_reply(
         message,
         f"**🤖 UserBot Help**\n"
-        f"**Prefix:** `{P}`\n\n"
+        f"**Prefix:** `{P}`\n"
+        f"**Access:** sirf teri ID\n\n"
         f"`{P}ping` — latency\n"
         f"`{P}alive` — status\n"
         f"`{P}help` — this menu\n"
@@ -133,6 +135,7 @@ async def on_any_message(client, message: Message):
     text = message.text or message.caption
     if not text:
         return
+    # log only own / owner traffic lightly
     logger.info(
         f"MSG chat={message.chat.id} out={message.outgoing} "
         f"from={getattr(message.from_user, 'id', None)} text={text[:60]!r}"
@@ -140,6 +143,7 @@ async def on_any_message(client, message: Message):
 
 
 def register_core():
+    # filters.command already locked via lock_filters_command()
     app.add_handler(
         MessageHandler(cmd_ping, filters.command(["ping", "p"], prefixes=[P, "!", "/"])),
         group=-2,
@@ -156,8 +160,8 @@ def register_core():
         MessageHandler(cmd_id, filters.command(["id"], prefixes=[P, "!", "/"])),
         group=-2,
     )
-    app.add_handler(MessageHandler(on_any_message, filters.text), group=99)
-    logger.info("Core handlers registered (open ping/alive/help/id + msg logger)")
+    app.add_handler(MessageHandler(on_any_message, filters.me & filters.text), group=99)
+    logger.info("Core handlers registered (LOCKED to self/OWNER only)")
 
 
 async def scheduler_worker():
@@ -189,6 +193,15 @@ async def main():
 
     patch_dispatcher_sync()
 
+    # 🔒 Lock ALL filters.command → only logged-in ID + OWNER_ID
+    try:
+        from bot.helpers.access import lock_filters_command
+
+        lock_filters_command()
+        logger.info("Access LOCK ON — commands only for self / OWNER_ID")
+    except Exception as e:
+        logger.error(f"Access lock failed: {e}")
+
     await db.connect()
     logger.info("Database connected")
 
@@ -208,7 +221,7 @@ async def main():
     register_core()
     logger.info(f"Handlers after re-bind: {count_handlers()}")
 
-    # Multi-account: start all saved sessions with SAME handlers
+    # Multi-account: same lock applies (each client only answers its own ID)
     try:
         from bot.plugins.login import restore_all_accounts, RUNNING
 
@@ -234,25 +247,26 @@ async def main():
     except Exception:
         extra = 0
 
+    owner = getattr(config, "OWNER_ID", 0) or 0
     try:
         msg = await app.send_message(
             "me",
             f"✅ **UserBot ONLINE**\n"
             f"Account: **{me.first_name}**\n"
             f"ID: `{me.id}`\n"
+            f"Owner: `{owner}`\n"
             f"Handlers: `{count_handlers()}`\n"
-            f"Multi-accounts live: `{extra}`\n\n"
-            f"Yahan type karo: `{P}ping`\n"
-            f"Accounts: `{P}logins`",
+            f"Multi-accounts live: `{extra}`\n"
+            f"🔒 Access: **only this ID** (others ignored)\n\n"
+            f"Type: `{P}ping`",
         )
         logger.info(f"Saved Messages notify OK id={msg.id}")
     except Exception as e:
         logger.error(f"Saved Messages send FAILED: {e}")
 
-    logger.info(f"READY | prefix={P} | id={me.id} | try {P}ping in Saved Messages")
+    logger.info(f"READY | prefix={P} | id={me.id} | LOCKED to self/owner")
     await idle()
 
-    # stop secondary clients
     try:
         from bot.plugins.login import RUNNING, stop_account
 

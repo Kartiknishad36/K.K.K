@@ -1,223 +1,299 @@
 """
-Userbot .login DISABLED — interactive login SIRF env / BOT se.
+🔐 Multi-Account Login Manager
+Add / list / remove other user accounts (session strings).
 
 Commands:
-  .login .cancellogin .logoutlogin .addsession .mylogin .logins
-
-- Command message auto-delete after reply
-- Full status + details → Saved Messages (me)
-- Session string never printed in public chats
+  .login          — help menu
+  .addsession     — add another account session
+  .logins         — list saved accounts
+  .delsession     — remove account by id/index
+  .mylogin        — main account status
+  .cancellogin    — cancel pending add
+  .logoutlogin    — alias delsession help
 """
 import asyncio
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
-from pyrogram import filters
+from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from bot.client import app
 import config
 
 P = config.COMMAND_PREFIX
+DATA_FILE = Path(getattr(config, "DATA_DIR", Path("data"))) / "extra_sessions.json"
+DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-# delay before deleting the user's command message (seconds)
-CMD_DELETE_AFTER = 1.0
-# delay before deleting the bot reply in chat (0 = keep)
-REPLY_DELETE_AFTER = 0
-
-LOGIN_CMDS = [
-    "login",
-    "cancellogin",
-    "logoutlogin",
-    "addsession",
-    "mylogin",
-    "logins",
-    "sessionlogin",
-]
+PENDING: dict[int, dict] = {}
+RUNNING: dict[int, Client] = {}
 
 
-def _owner_ok(message: Message) -> bool:
-    uid = message.from_user.id if message.from_user else 0
-    owner = getattr(config, "OWNER_ID", 0) or 0
-    if not owner:
-        return True  # no owner set → allow self-userbot
-    return uid == owner or (message.outgoing if hasattr(message, "outgoing") else False)
-
-
-async def _safe_delete(msg: Message | None):
-    if not msg:
-        return
+def _load() -> list:
+    if not DATA_FILE.exists():
+        return []
     try:
-        await msg.delete()
+        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
     except Exception:
-        pass
+        return []
 
 
-async def _auto_del_cmd(message: Message):
-    """Delete the command message itself."""
+def _save(rows: list):
+    DATA_FILE.write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+async def _out(message: Message, text: str):
     try:
-        await asyncio.sleep(CMD_DELETE_AFTER)
+        return await message.reply_text(text)
+    except Exception:
+        try:
+            return await message.edit_text(text)
+        except Exception:
+            return None
+
+
+async def _del_cmd(message: Message, delay: float = 1.0):
+    try:
+        await asyncio.sleep(delay)
         await message.delete()
     except Exception:
         pass
 
 
-async def _to_saved(client, text: str):
-    """Send detailed log to Saved Messages only (never public)."""
-    try:
-        await client.send_message("me", text)
-        return True
-    except Exception:
-        return False
-
-
-async def _reply(message: Message, text: str):
-    try:
-        r = await message.reply_text(text)
-    except Exception:
-        try:
-            r = await message.edit_text(text)
-        except Exception:
-            r = None
-    asyncio.create_task(_auto_del_cmd(message))
-    if r and REPLY_DELETE_AFTER > 0:
-
-        async def _later():
-            await asyncio.sleep(REPLY_DELETE_AFTER)
-            await _safe_delete(r)
-
-        asyncio.create_task(_later())
-    return r
-
-
-def _login_help() -> str:
+def _help() -> str:
     return (
-        f"╔══ 🔐 <b>LOGIN MODULE</b> ══╗\n\n"
-        f"<b>Status:</b> Userbot interactive login is <b>DISABLED</b>\n\n"
-        f"📌 <b>Why?</b>\n"
-        f"• Session chat me leak na ho\n"
-        f"• Phone/OTP/2FA public group me unsafe\n"
-        f"• Production me <code>SESSION_STRING</code> env use karo\n\n"
-        f"📌 <b>Kaise login kare?</b>\n"
-        f"1. Local / VPS pe StringSession banao\n"
-        f"2. Render/Railway env me set karo:\n"
-        f"   <code>API_ID</code> <code>API_HASH</code> <code>SESSION_STRING</code> <code>OWNER_ID</code>\n"
-        f"3. Deploy → userbot start\n\n"
-        f"📌 <b>Commands (info only)</b>\n"
-        f"• <code>{P}login</code> — ye help + Saved Messages log\n"
-        f"• <code>{P}mylogin</code> — current account details (Saved)\n"
-        f"• <code>{P}logins</code> — same as mylogin\n"
-        f"• <code>{P}addsession</code> — session add guide\n"
-        f"• <code>{P}cancellogin</code> — no active flow\n"
-        f"• <code>{P}logoutlogin</code> — no active flow\n"
-        f"• <code>{P}sessions</code> — session.py full info\n\n"
-        f"📌 <b>Auto-delete</b>\n"
-        f"• Command message ~{CMD_DELETE_AFTER}s me delete\n"
-        f"• Full details sirf <b>Saved Messages</b> me\n\n"
-        f"╚══════════════════════╝"
+        f"╔══════════════════════════╗\n"
+        f"║  🔐  <b>MULTI LOGIN</b>  ║\n"
+        f"╚══════════════════════════╝\n\n"
+        f"📌 <b>Dusre account add karo</b> (session string se)\n\n"
+        f"✨ <b>Commands</b>\n"
+        f"• <code>{P}addsession</code> — naya account add\n"
+        f"• <code>{P}addsession &lt;string&gt;</code> — direct string\n"
+        f"• <code>{P}logins</code> — saved accounts list\n"
+        f"• <code>{P}delsession &lt;no|#id&gt;</code> — account hatao\n"
+        f"• <code>{P}mylogin</code> — main account status\n"
+        f"• <code>{P}cancellogin</code> — pending cancel\n"
+        f"• <code>{P}login</code> — yeh help\n\n"
+        f"⚠️ Session string <b>sirf private / Saved Messages</b> me bhejo.\n"
+        f"Group me mat paste karo.\n"
     )
 
 
-async def _session_details(client) -> str:
+@app.on_message(filters.command(["login"], prefixes=P), group=-15)
+async def login_help(client, message: Message):
+    await _out(message, _help())
+    asyncio.create_task(_del_cmd(message))
+
+
+@app.on_message(filters.command(["mylogin"], prefixes=P), group=-15)
+async def mylogin_cmd(client, message: Message):
     me = await client.get_me()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    lines = [
-        "╔══ 🔐 LOGIN / SESSION DETAILS ══╗",
-        f"01 Time: {now}",
-        f"02 Name: {me.first_name} {me.last_name or ''}".strip(),
-        f"03 User ID: `{me.id}`",
-        f"04 Username: @{me.username}" if me.username else "04 Username: None",
-        f"05 Premium: {getattr(me, 'is_premium', False)}",
-        f"06 Verified: {getattr(me, 'is_verified', False)}",
-        f"07 Restricted: {getattr(me, 'is_restricted', False)}",
-        f"08 Scam: {getattr(me, 'is_scam', False)}",
-        f"09 Fake: {getattr(me, 'is_fake', False)}",
-        f"10 Bot flag: {me.is_bot}",
-        f"11 DC ID: {getattr(me, 'dc_id', 'N/A')}",
-        f"12 Language: {getattr(me, 'language_code', 'N/A')}",
-        f"13 Session name: `{getattr(config, 'SESSION_NAME', 'N/A')}`",
-        f"14 SESSION_STRING set: {bool(getattr(config, 'SESSION_STRING', None))}",
-        f"15 API_ID set: {bool(getattr(config, 'API_ID', None))}",
-        f"16 API_HASH set: {bool(getattr(config, 'API_HASH', None))}",
-        f"17 OWNER_ID: `{getattr(config, 'OWNER_ID', 0)}`",
-        f"18 Prefix: `{P}`",
-        f"19 Interactive login: DISABLED",
-        f"20 OTP flow: N/A (use env session)",
-        f"21 2FA flow: N/A (use env session)",
-        f"22 Public chat login: BLOCKED",
-        f"23 Saved Messages log: YES",
-        f"24 Command auto-delete: {CMD_DELETE_AFTER}s",
-        "25 Note: Session string kabhi group me mat bhejo",
-        "└─ END LOGIN DETAILS",
-    ]
-    return "\n".join(lines)
+    rows = _load()
+    text = (
+        f"╔══ 👤 <b>MAIN ACCOUNT</b> ══╗\n"
+        f"✨ Name: <b>{me.first_name}</b>\n"
+        f"🆔 ID: <code>{me.id}</code>\n"
+        f"🔗 Username: {'@' + me.username if me.username else 'None'}\n"
+        f"💎 Premium: {getattr(me, 'is_premium', False)}\n"
+        f"📡 DC: {getattr(me, 'dc_id', 'N/A')}\n"
+        f"📦 Extra accounts saved: <code>{len(rows)}</code>\n"
+        f"⚡ Running extra clients: <code>{len(RUNNING)}</code>\n"
+        f"🕒 {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+        f"╚════════════════════╝"
+    )
+    await _out(message, text)
+    asyncio.create_task(_del_cmd(message))
 
 
-@app.on_message(
-    filters.command(LOGIN_CMDS, prefixes=P),
-    group=-15,
-)
-async def login_module(client, message: Message):
-    cmd = (message.command[0] if message.command else "login").lower()
-
-    # public short reply
-    if cmd in ("login", "sessionlogin"):
-        await _reply(message, _login_help())
-        # full dump → Saved Messages
-        detail = await _session_details(client)
-        await _to_saved(
-            client,
-            detail
-            + "\n\n"
-            + f"Trigger: <code>{P}{cmd}</code>\n"
-            + f"Chat: `{message.chat.id if message.chat else 'N/A'}`\n"
-            + f"From: `{message.from_user.id if message.from_user else 'N/A'}`",
-        )
+@app.on_message(filters.command(["addsession"], prefixes=P), group=-15)
+async def addsession_cmd(client, message: Message):
+    uid = message.from_user.id if message.from_user else 0
+    owner = getattr(config, "OWNER_ID", 0) or 0
+    if owner and uid and uid != owner and not getattr(message, "outgoing", False):
+        await _out(message, "❌ Sirf owner extra account add kar sakta hai.")
+        asyncio.create_task(_del_cmd(message))
         return
 
-    if cmd in ("mylogin", "logins"):
-        detail = await _session_details(client)
-        ok = await _to_saved(client, detail)
-        await _reply(
-            message,
-            "✅ Full login/session details <b>Saved Messages</b> me bhej diye.\n"
-            if ok
-            else "⚠️ Saved Messages fail — check session.\n" + detail[:800],
-        )
+    if len(message.command) > 1:
+        raw = message.text.split(None, 1)[1].strip()
+        asyncio.create_task(_del_cmd(message, 0.3))
+        await _register_session(client, message, raw)
         return
 
-    if cmd == "addsession":
-        guide = (
-            f"╔══ 📎 <b>ADD SESSION GUIDE</b> ══╗\n\n"
-            f"1. Pyrogram StringSession generate karo (local)\n"
-            f"2. Host env variables:\n"
-            f"   <code>API_ID=...</code>\n"
-            f"   <code>API_HASH=...</code>\n"
-            f"   <code>SESSION_STRING=...</code>\n"
-            f"   <code>OWNER_ID=...</code>\n"
-            f"   <code>COMMAND_PREFIX=.</code>\n\n"
-            f"3. Redeploy service\n"
-            f"4. Check: <code>{P}sessions</code> / <code>{P}mylogin</code>\n\n"
-            f"⚠️ String session chat me paste mat karo.\n"
-            f"╚══════════════════════╝"
-        )
-        await _reply(message, guide)
-        await _to_saved(client, guide + f"\n\nChat: `{message.chat.id}`")
+    PENDING[uid or 0] = {"step": "wait_string"}
+    await _out(
+        message,
+        f"🔐 <b>Add Account</b>\n\n"
+        f"Ab <b>session string</b> bhejo (next message).\n"
+        f"Cancel: <code>{P}cancellogin</code>\n\n"
+        f"⚠️ Private / Saved Messages recommended.",
+    )
+    asyncio.create_task(_del_cmd(message))
+
+
+@app.on_message(filters.text & ~filters.via_bot, group=-14)
+async def addsession_capture(client, message: Message):
+    uid = message.from_user.id if message.from_user else 0
+    if uid not in PENDING:
+        me_pending = None
+        for k, v in list(PENDING.items()):
+            if v.get("step") == "wait_string":
+                me_pending = k
+                break
+        if me_pending is None:
+            return
+        uid = me_pending
+    if PENDING.get(uid, {}).get("step") != "wait_string":
+        return
+    text = (message.text or "").strip()
+    if not text or text.startswith(P):
+        return
+    PENDING.pop(uid, None)
+    asyncio.create_task(_del_cmd(message, 0.2))
+    await _register_session(client, message, text)
+
+
+async def _register_session(client, message: Message, session_string: str):
+    session_string = session_string.strip().strip('"').strip("'")
+    if len(session_string) < 20:
+        await _out(message, "❌ Session string bahut short / invalid.")
         return
 
-    if cmd in ("cancellogin", "logoutlogin"):
-        await _reply(
-            message,
-            f"ℹ️ Koi active interactive login flow nahi hai.\n"
-            f"Userbot login chat se band hai.\n"
-            f"Details: <code>{P}login</code>",
+    status = await _out(message, "⏳ Session verify kar raha hoon...")
+    try:
+        tmp = Client(
+            name=f"extra_{int(datetime.now().timestamp())}",
+            api_id=config.API_ID,
+            api_hash=config.API_HASH,
+            session_string=session_string,
+            in_memory=True,
         )
-        await _to_saved(
-            client,
-            f"🔐 {P}{cmd} used — no active OTP flow\n"
-            f"Time: {datetime.now(timezone.utc).isoformat()}\n"
-            f"Chat: `{message.chat.id}`",
-        )
+        await tmp.start()
+        me = await tmp.get_me()
+        info = {
+            "user_id": me.id,
+            "name": f"{me.first_name or ''} {me.last_name or ''}".strip(),
+            "username": me.username,
+            "session": session_string,
+            "added_at": datetime.now(timezone.utc).isoformat(),
+            "premium": bool(getattr(me, "is_premium", False)),
+            "dc_id": getattr(me, "dc_id", None),
+        }
+        await tmp.stop()
+    except Exception as e:
+        if status:
+            try:
+                await status.edit_text(f"❌ Session invalid:\n<code>{type(e).__name__}: {e}</code>")
+            except Exception:
+                pass
         return
 
-    # fallback
-    await _reply(message, _login_help())
+    rows = _load()
+    rows = [r for r in rows if r.get("user_id") != info["user_id"]]
+    rows.append(info)
+    _save(rows)
+
+    try:
+        await client.send_message(
+            "me",
+            f"✅ <b>Extra account added</b>\n"
+            f"👤 {info['name']}\n"
+            f"🆔 <code>{info['user_id']}</code>\n"
+            f"🔗 @{info['username'] or 'None'}\n"
+            f"💎 Premium: {info['premium']}\n"
+            f"📦 Total saved: {len(rows)}\n"
+            f"🕒 {info['added_at']}",
+        )
+    except Exception:
+        pass
+
+    msg = (
+        f"✅ <b>Account added</b>\n\n"
+        f"👤 <b>{info['name']}</b>\n"
+        f"🆔 <code>{info['user_id']}</code>\n"
+        f"🔗 @{info['username'] or 'None'}\n"
+        f"💎 Premium: {info['premium']}\n"
+        f"📡 DC: {info['dc_id']}\n"
+        f"📦 Total: <code>{len(rows)}</code>\n\n"
+        f"List: <code>{P}logins</code>"
+    )
+    if status:
+        try:
+            await status.edit_text(msg)
+            return
+        except Exception:
+            pass
+    await _out(message, msg)
+
+
+@app.on_message(filters.command(["logins", "sessionslist"], prefixes=P), group=-15)
+async def logins_cmd(client, message: Message):
+    rows = _load()
+    if not rows:
+        await _out(message, f"📭 Koi extra account nahi.\nAdd: <code>{P}addsession</code>")
+        asyncio.create_task(_del_cmd(message))
+        return
+    lines = [f"╔══ 📋 <b>SAVED ACCOUNTS</b> ({len(rows)}) ══╗"]
+    for i, r in enumerate(rows, 1):
+        lines.append(
+            f"\n<b>{i}.</b> {r.get('name') or 'User'}\n"
+            f"   🆔 <code>{r.get('user_id')}</code>\n"
+            f"   🔗 @{r.get('username') or 'None'}\n"
+            f"   💎 {r.get('premium', False)} | 📡 DC {r.get('dc_id', 'N/A')}\n"
+            f"   🕒 {str(r.get('added_at', ''))[:19]}"
+        )
+    lines.append(f"\n🗑 Remove: <code>{P}delsession 1</code>")
+    lines.append("╚════════════════════╝")
+    await _out(message, "\n".join(lines))
+    asyncio.create_task(_del_cmd(message))
+
+
+@app.on_message(filters.command(["delsession", "logoutlogin"], prefixes=P), group=-15)
+async def delsession_cmd(client, message: Message):
+    rows = _load()
+    if len(message.command) < 2:
+        await _out(message, f"Usage:\n<code>{P}delsession 1</code>\n<code>{P}delsession 123456789</code>")
+        asyncio.create_task(_del_cmd(message))
+        return
+    arg = message.command[1].lstrip("#")
+    removed = None
+    if arg.isdigit():
+        n = int(arg)
+        if 1 <= n <= len(rows):
+            removed = rows.pop(n - 1)
+        else:
+            for i, r in enumerate(rows):
+                if r.get("user_id") == n:
+                    removed = rows.pop(i)
+                    break
+    if not removed:
+        await _out(message, "❌ Account nahi mila.")
+        asyncio.create_task(_del_cmd(message))
+        return
+    _save(rows)
+    uid = removed.get("user_id")
+    if uid in RUNNING:
+        try:
+            await RUNNING[uid].stop()
+        except Exception:
+            pass
+        RUNNING.pop(uid, None)
+    await _out(
+        message,
+        f"🗑 Removed: <b>{removed.get('name')}</b> (<code>{uid}</code>)\nRemaining: <code>{len(rows)}</code>",
+    )
+    asyncio.create_task(_del_cmd(message))
+
+
+@app.on_message(filters.command(["cancellogin"], prefixes=P), group=-15)
+async def cancellogin_cmd(client, message: Message):
+    uid = message.from_user.id if message.from_user else 0
+    if uid in PENDING or 0 in PENDING:
+        PENDING.pop(uid, None)
+        PENDING.pop(0, None)
+        await _out(message, "🛑 Pending addsession cancel.")
+    else:
+        await _out(message, "ℹ️ Koi pending login nahi.")
+    asyncio.create_task(_del_cmd(message))

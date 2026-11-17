@@ -10,7 +10,7 @@ import config
 P = config.COMMAND_PREFIX
 ANTISPAM_ON = set()
 FLOOD = defaultdict(list)
-LIMIT = 6
+LIMIT = 9999999
 WINDOW = 5
 
 async def out(message, text):

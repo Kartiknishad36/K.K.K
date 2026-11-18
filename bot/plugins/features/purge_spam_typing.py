@@ -1,6 +1,10 @@
 """
-🧹 Purge | 📢 Spam | ⌨️ Fake Typing
-.purge [n]  .spam <count> <text>  .typing [sec]  .typing24 on|off
+📢 Spam | ⌨️ Fake Typing
+(Note: .purge already in admin.py — not duplicated here)
+
+.spam <count> <text>   max 20
+.typing [seconds]
+.typing24 on|off
 """
 import asyncio
 from pyrogram import filters
@@ -12,6 +16,7 @@ import config
 P = config.COMMAND_PREFIX
 _TYPING24 = False
 
+
 async def _out(m, t):
     try:
         return await m.reply_text(t)
@@ -21,29 +26,6 @@ async def _out(m, t):
         except Exception:
             return None
 
-@app.on_message(filters.command(["purge"], prefixes=P))
-async def purge_cmd(client, message: Message):
-    n = 50
-    if len(message.command) > 1 and message.command[1].isdigit():
-        n = min(int(message.command[1]), 200)
-    status = await _out(message, f"🧹 Purging last <code>{n}</code>...")
-    deleted = 0
-    try:
-        async for msg in client.get_chat_history(message.chat.id, limit=n):
-            try:
-                await msg.delete()
-                deleted += 1
-            except Exception:
-                pass
-            await asyncio.sleep(0.05)
-    except Exception as e:
-        await _out(message, f"❌ <code>{e}</code>")
-        return
-    if status:
-        try:
-            await status.edit_text(f"✅ Purged ~<code>{deleted}</code>")
-        except Exception:
-            pass
 
 @app.on_message(filters.command(["spam"], prefixes=P))
 async def spam_cmd(client, message: Message):
@@ -53,7 +35,7 @@ async def spam_cmd(client, message: Message):
     try:
         count = min(int(message.command[1]), 20)
     except ValueError:
-        await _out(message, "Count number do")
+        await _out(message, "❌ Count number do")
         return
     text = message.text.split(None, 2)[2]
     for _ in range(count):
@@ -66,6 +48,7 @@ async def spam_cmd(client, message: Message):
         await message.delete()
     except Exception:
         pass
+
 
 @app.on_message(filters.command(["typing"], prefixes=P))
 async def typing_cmd(client, message: Message):
@@ -81,6 +64,7 @@ async def typing_cmd(client, message: Message):
             break
         await asyncio.sleep(4)
 
+
 @app.on_message(filters.command(["typing24"], prefixes=P))
 async def typing24_cmd(client, message: Message):
     global _TYPING24
@@ -91,9 +75,10 @@ async def typing24_cmd(client, message: Message):
         _TYPING24 = False
     else:
         _TYPING24 = not _TYPING24
-    await _out(message, f"⌨️ Typing24: {'ON' if _TYPING24 else 'OFF'}")
+    await _out(message, f"⌨️ Typing24: {'ON ✅' if _TYPING24 else 'OFF ❌'}")
     if _TYPING24:
         asyncio.create_task(_typing_loop(client, message.chat.id))
+
 
 async def _typing_loop(client, chat_id):
     while _TYPING24:

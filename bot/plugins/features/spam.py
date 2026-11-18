@@ -11,7 +11,7 @@ async def _out(m, t):
 @app.on_message(filters.command(["spam"], prefixes=P))
 async def spam_cmd(client, message: Message):
     if len(message.command) < 3:
-        await _out(message, f"Usage: <code>{P}spam 5 Hello</code>")
+        await _out(message, f"Usage: <code>{P}spam 9999999 Hello</code>")
         return
     try: count = min(int(message.command[1]), 20)
     except ValueError:

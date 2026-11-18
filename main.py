@@ -17,7 +17,6 @@ P = (config.COMMAND_PREFIX or ".").strip() or "."
 
 
 def patch_dispatcher_sync():
-    """Pyrogram 2.x: add_handler uses create_task — fails before loop is running."""
     dispatcher = app.dispatcher
 
     def sync_add_handler(handler, group: int = 0):
@@ -38,16 +37,30 @@ def patch_dispatcher_sync():
 
 def load_plugins():
     loaded, failed = 0, []
+
+    def _load(modpath: str, label: str):
+        nonlocal loaded, failed
+        try:
+            importlib.import_module(modpath)
+            logger.info(f"Loaded plugin: {label}")
+            loaded += 1
+        except Exception as e:
+            failed.append(label)
+            logger.error(f"Failed plugin {label}: {type(e).__name__}: {e}")
+
     for file in sorted(PLUGINS_DIR.glob("*.py")):
         if file.name.startswith("_"):
             continue
-        try:
-            importlib.import_module(f"bot.plugins.{file.stem}")
-            logger.info(f"Loaded plugin: {file.stem}")
-            loaded += 1
-        except Exception as e:
-            failed.append(file.stem)
-            logger.error(f"Failed plugin {file.stem}: {type(e).__name__}: {e}")
+        _load(f"bot.plugins.{file.stem}", file.stem)
+
+    # Feature pack folder
+    feat_dir = PLUGINS_DIR / "features"
+    if feat_dir.is_dir():
+        for file in sorted(feat_dir.glob("*.py")):
+            if file.name.startswith("_"):
+                continue
+            _load(f"bot.plugins.features.{file.stem}", f"features/{file.stem}")
+
     logger.info(f"Plugins loaded: {loaded} | failed: {len(failed)}")
     if failed:
         logger.warning(f"Failed: {', '.join(failed)}")
@@ -109,6 +122,7 @@ async def cmd_help(client, message: Message):
         f"`{P}ping` — latency\n"
         f"`{P}alive` — status\n"
         f"`{P}help` — this menu\n"
+        f"`{P}fhelp` — feature pack menu\n"
         f"`{P}id` — ids\n"
         f"`{P}login` — multi-account\n"
         f"`{P}logins` — list accounts\n",
@@ -135,7 +149,6 @@ async def on_any_message(client, message: Message):
     text = message.text or message.caption
     if not text:
         return
-    # log only own / owner traffic lightly
     logger.info(
         f"MSG chat={message.chat.id} out={message.outgoing} "
         f"from={getattr(message.from_user, 'id', None)} text={text[:60]!r}"
@@ -143,7 +156,6 @@ async def on_any_message(client, message: Message):
 
 
 def register_core():
-    # filters.command already locked via lock_filters_command()
     app.add_handler(
         MessageHandler(cmd_ping, filters.command(["ping", "p"], prefixes=[P, "!", "/"])),
         group=-2,
@@ -193,7 +205,6 @@ async def main():
 
     patch_dispatcher_sync()
 
-    # 🔒 Lock ALL filters.command → only logged-in ID + OWNER_ID
     try:
         from bot.helpers.access import lock_filters_command
 
@@ -221,7 +232,6 @@ async def main():
     register_core()
     logger.info(f"Handlers after re-bind: {count_handlers()}")
 
-    # Multi-account: same lock applies (each client only answers its own ID)
     try:
         from bot.plugins.login import restore_all_accounts, RUNNING
 
@@ -257,7 +267,8 @@ async def main():
             f"Owner: `{owner}`\n"
             f"Handlers: `{count_handlers()}`\n"
             f"Multi-accounts live: `{extra}`\n"
-            f"🔒 Access: **only this ID** (others ignored)\n\n"
+            f"🔒 Access: **only this ID**\n"
+            f"✨ Features: `{P}fhelp`\n\n"
             f"Type: `{P}ping`",
         )
         logger.info(f"Saved Messages notify OK id={msg.id}")

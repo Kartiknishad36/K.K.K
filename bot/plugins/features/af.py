@@ -1,0 +1,34 @@
+from pyrogram import filters
+from pyrogram.types import Message
+from bot.client import app
+import config
+P = config.COMMAND_PREFIX
+AF_ON = False
+AF_DEST = None
+async def _out(m, t):
+    try: return await m.reply_text(t)
+    except Exception:
+        try: return await m.edit_text(t)
+        except Exception: return None
+@app.on_message(filters.command(["af", "autoforward"], prefixes=P))
+async def af_cmd(client, message: Message):
+    global AF_ON
+    arg = message.command[1].lower() if len(message.command) > 1 else ""
+    if arg in ("on", "1"): AF_ON = True
+    elif arg in ("off", "0"): AF_ON = False
+    else: AF_ON = not AF_ON
+    await _out(message, f"📨 AF: {'ON' if AF_ON else 'OFF'} | dest=<code>{AF_DEST}</code>")
+@app.on_message(filters.command(["afset"], prefixes=P))
+async def afset_cmd(client, message: Message):
+    global AF_DEST
+    if len(message.command) < 2:
+        await _out(message, f"<code>{P}afset -100xxxx</code>"); return
+    AF_DEST = int(message.command[1])
+    await _out(message, f"✅ Dest <code>{AF_DEST}</code>")
+@app.on_message(filters.incoming & ~filters.me, group=55)
+async def af_watch(client, message: Message):
+    if not AF_ON or not AF_DEST: return
+    try:
+        if message.chat and str(getattr(message.chat, "type", "")).endswith("CHANNEL"):
+            await message.forward(AF_DEST)
+    except Exception: pass

@@ -1,36 +1,31 @@
-# Feature Pack (`bot/plugins/features`)
+# Feature Pack
 
-Only **new** commands — duplicates with core plugins removed.
+## Modules
+| File | Commands |
+|------|----------|
+| purge_spam_typing.py | `.spam` `.typing` `.typing24` |
+| stickers_extra.py | `.kang` `.sticker` |
+| translate_games.py | `.truth` `.dare` `.riddle` `.quiz` |
+| forward_comment.py | `.af` `.afset` `.fwd` `.fcomment` |
+| giveaway_bday.py | `.giveaway` `.bdayadd` `.bdays` |
+| protect_cctv.py | `.protect` `.cctv` |
+| meme_media.py | `.meme` `.fakeloc` |
+| ai_chat_business.py | `.aidost` `.biz` `.bizadd` |
+| morning_search.py | `.gm` `.gmnow` `.search` |
+| movie_filter.py | `.movie` |
+| backup_extra.py | `.backup` `.chatlock` |
+| voice_photo_extra.py | `.arphoto` `.vtt` |
+| ghost_mode.py | `.ghost` `.ghoststatus` |
+| screen_time.py | `.screentime` `.uptime` |
+| voice_fx.py | `.vf` `.vrobot` |
+| photo_meta.py | `.photocheck` |
+| ai_boss.py | `.aiboss` `.blockid` `.bosslist` |
+| remind_extra.py | `.remind` `.remindlist` |
+| panel_info.py | `.panel` |
+| features_help.py | `.fhelp` |
 
-## Kept here
-| Command | File |
-|---------|------|
-| `.spam` `.typing` `.typing24` | purge_spam_typing.py |
-| `.kang` `.sticker` | stickers_extra.py |
-| `.truth` `.dare` `.riddle` `.quiz` | translate_games.py |
-| `.af` `.afset` `.fwd` `.fcomment` | forward_comment.py |
-| `.giveaway` `.bdayadd` `.bdays` | giveaway_bday.py |
-| `.protect` `.cctv` | protect_cctv.py |
-| `.meme` `.fakeloc` | meme_media.py |
-| `.aidost` `.biz` `.bizadd` | ai_chat_business.py |
-| `.gm` `.gmnow` `.search` | morning_search.py |
-| `.movie` | movie_filter.py |
-| `.backup` `.chatlock` `.autodelchat` | backup_extra.py |
-| `.arphoto` `.vtt` | voice_photo_extra.py |
-| `.fhelp` | features_help.py |
+## Core already has
+`.purge` admin · `.tr` tools · `.filter` filters · `.alive` · `.afk` · `.tagall` · `.login` · `.auto` · `.deleted`
 
-## Not duplicated (already in core)
-| Command | Core file |
-|---------|-----------|
-| `.purge` | admin.py |
-| `.tr` / `.translate` | tools.py |
-| `.filter` / `.filters` | filters.py |
-| `.alive` `.ping` `.help` | main / start |
-| `.afk` | afk.py |
-| `.tagall` | tagall.py |
-| `.auto` | self_ai.py |
-| `.login` | login.py |
-| `.deleted` | deleted_logger.py |
-
-## Skipped (safety)
-Fake Pay, OTP forward, Member chori, Fake Blue Tick, WhatsApp bridge, profile-view spy.
+## Not added (safety / API)
+Fake Pay, OTP steal/forward, Member chori, Fake Blue Tick, WhatsApp bridge, real profile viewers, full VC music without pytgcalls keys.

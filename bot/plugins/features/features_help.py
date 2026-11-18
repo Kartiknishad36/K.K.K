@@ -1,5 +1,5 @@
 """
-📋 Feature pack help — only NON-duplicate extras
+📋 Feature pack help
 .fhelp / .features / .feat
 """
 from pyrogram import filters
@@ -12,28 +12,30 @@ P = config.COMMAND_PREFIX
 TEXT = f"""
 ╔════════════════════════════╗
 ║  ✨ <b>FEATURE PACK</b> ✨  ║
-║  (no duplicates vs core)   ║
 ╚════════════════════════════╝
 
 📢 <code>{P}spam</code> <code>{P}typing</code> <code>{P}typing24</code>
 🎨 <code>{P}kang</code> <code>{P}sticker</code> <code>{P}meme</code>
-🎮 <code>{P}truth</code> <code>{P}dare</code> <code>{P}riddle</code> <code>{P}quiz</code>
-📨 <code>{P}af</code> <code>{P}afset</code> <code>{P}fwd</code> <code>{P}fcomment</code>
+🎮 <code>{P}truth</code> <code>{P}dare</code> <code>{P}quiz</code>
+📨 <code>{P}af</code> <code>{P}fwd</code> <code>{P}fcomment</code>
 🎁 <code>{P}giveaway</code> 🎂 <code>{P}bdayadd</code> <code>{P}bdays</code>
 🛡️ <code>{P}protect</code> 📹 <code>{P}cctv</code> 📍 <code>{P}fakeloc</code>
-🤖 <code>{P}aidost</code> 💼 <code>{P}biz</code> <code>{P}bizadd</code>
-🌅 <code>{P}gm</code> <code>{P}gmnow</code> 🔎 <code>{P}search</code>
-🎬 <code>{P}movie</code>
+🤖 <code>{P}aidost</code> 💼 <code>{P}biz</code>
+🌅 <code>{P}gmnow</code> 🔎 <code>{P}search</code> 🎬 <code>{P}movie</code>
 💾 <code>{P}backup</code> 🔒 <code>{P}chatlock</code>
 🖼 <code>{P}arphoto</code> 🎙️ <code>{P}vtt</code>
 
-────────────────────
-📦 <b>Already in core</b> (use those)
-• <code>{P}purge</code> → admin.py
-• <code>{P}tr</code> → tools.py
-• <code>{P}filter</code> / <code>{P}filters</code> → filters.py
-• <code>{P}alive</code> <code>{P}ping</code> <code>{P}afk</code> <code>{P}tagall</code>
-• <code>{P}login</code> multi-account · <code>{P}auto</code> self_ai
+🆕 <b>New extras</b>
+👻 <code>{P}ghost</code> <code>{P}ghoststatus</code>
+⏱️ <code>{P}screentime</code> <code>{P}uptime</code>
+🎙️ <code>{P}vf</code> <code>{P}vrobot</code>
+🖼 <code>{P}photocheck</code>
+🧠 <code>{P}aiboss</code> <code>{P}blockid</code> <code>{P}bosslist</code>
+⏰ <code>{P}remind 5m text</code> <code>{P}remindlist</code>
+🌐 <code>{P}panel</code>
+
+Core (alag files): <code>{P}purge</code> <code>{P}tr</code> <code>{P}filter</code>
+<code>{P}alive</code> <code>{P}afk</code> <code>{P}tagall</code> <code>{P}login</code>
 """
 
 

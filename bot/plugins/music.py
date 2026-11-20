@@ -1,12 +1,14 @@
 """
-🎵 Music — public in ALL groups (members can use)
-Other bot commands stay owner-only via access.py whitelist.
+🎵 Music — public all groups
 
-.env:
+.play / .vplay / .cplay  query|url|reply
+→ search → download (Shruti API + multi URL + yt-dlp)
+→ auto VC join/play
+→ thumb + requester DP + song card + audio
+
+Env:
   SHRUTI_API_URL=https://api.shrutibots.in
-  SHRUTI_API_KEY=your_key
-
-.play / .vplay / .cplay — search|url|reply → download → auto VC join try → chat audio fallback
+  SHRUTI_API_KEY=...
 """
 from __future__ import annotations
 
@@ -26,8 +28,20 @@ from bot.helpers import vc as vcmod
 import config
 
 P = config.COMMAND_PREFIX
-API_URL = (getattr(config, "SHRUTI_API_URL", None) or os.getenv("SHRUTI_API_URL") or "https://api.shrutibots.in").rstrip("/")
 API_KEY = getattr(config, "SHRUTI_API_KEY", None) or os.getenv("SHRUTI_API_KEY") or ""
+# try multiple known bases if one fails
+_API_BASES = []
+for u in [
+    getattr(config, "SHRUTI_API_URL", None) or os.getenv("SHRUTI_API_URL"),
+    "https://api.shrutibots.in",
+    "https://api01.shrutibots.site",
+    "https://api.shrutibots.site",
+]:
+    if u:
+        u = u.rstrip("/")
+        if u not in _API_BASES:
+            _API_BASES.append(u)
+
 DOWNLOAD_DIR = Path(getattr(config, "DATA_DIR", Path("data"))) / "music"
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -88,53 +102,58 @@ def _query_from_message(message: Message) -> str:
             return urls[0]
         return (r.text or r.caption or "").strip()
     urls = _urls_from_message(message)
-    if urls:
-        return urls[0]
-    return ""
+    return urls[0] if urls else ""
+
+
+def thumb_url(vid: str) -> str:
+    if not vid or len(vid) < 6 or vid.startswith("http"):
+        return ""
+    return f"https://img.youtube.com/vi/{vid}/hqdefault.jpg"
 
 
 async def yt_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     try:
-        try:
-            from youtube_search import YoutubeSearch
+        from youtube_search import YoutubeSearch
 
-            data = YoutubeSearch(query, max_results=limit).to_dict()
-            for item in data:
-                vid = item.get("id") or ""
-                results.append(
-                    {
-                        "id": vid,
-                        "title": item.get("title") or "Unknown",
-                        "duration": item.get("duration") or "?",
-                        "url": f"https://www.youtube.com/watch?v={vid}" if vid else "",
-                        "channel": item.get("channel") or "",
-                    }
-                )
-            if results:
-                return results
-        except Exception:
-            pass
-        try:
-            from youtubesearchpython import VideosSearch
+        for item in YoutubeSearch(query, max_results=limit).to_dict():
+            vid = item.get("id") or ""
+            results.append(
+                {
+                    "id": vid,
+                    "title": item.get("title") or "Unknown",
+                    "duration": item.get("duration") or "?",
+                    "url": f"https://www.youtube.com/watch?v={vid}" if vid else "",
+                    "channel": item.get("channel") or "",
+                    "thumb": thumb_url(vid),
+                }
+            )
+        if results:
+            return results
+    except Exception:
+        pass
+    try:
+        from youtubesearchpython import VideosSearch
 
-            data = VideosSearch(query, limit=limit).result().get("result") or []
-            for item in data:
-                vid = item.get("id") or ""
-                ch = item.get("channel")
-                results.append(
-                    {
-                        "id": vid,
-                        "title": item.get("title") or "Unknown",
-                        "duration": item.get("duration") or "?",
-                        "url": item.get("link") or f"https://www.youtube.com/watch?v={vid}",
-                        "channel": ch.get("name", "") if isinstance(ch, dict) else str(ch or ""),
-                    }
-                )
-            if results:
-                return results
-        except Exception:
-            pass
+        for item in (VideosSearch(query, limit=limit).result().get("result") or []):
+            vid = item.get("id") or ""
+            ch = item.get("channel")
+            th = ""
+            thumbs = item.get("thumbnails") or []
+            if thumbs:
+                th = thumbs[0].get("url") or ""
+            results.append(
+                {
+                    "id": vid,
+                    "title": item.get("title") or "Unknown",
+                    "duration": item.get("duration") or "?",
+                    "url": item.get("link") or f"https://www.youtube.com/watch?v={vid}",
+                    "channel": ch.get("name", "") if isinstance(ch, dict) else str(ch or ""),
+                    "thumb": th or thumb_url(vid),
+                }
+            )
+        if results:
+            return results
     except Exception:
         pass
     try:
@@ -153,6 +172,7 @@ async def yt_search(query: str, limit: int = 5) -> list[dict[str, Any]]:
                         "duration": str(e.get("duration") or "?"),
                         "url": e.get("webpage_url") or f"https://www.youtube.com/watch?v={vid}",
                         "channel": e.get("channel") or e.get("uploader") or "",
+                        "thumb": thumb_url(vid),
                     }
                 )
     except Exception:
@@ -165,15 +185,19 @@ async def resolve_track(query: str) -> dict[str, Any] | None:
         return None
     vid = _extract_yt_id(query)
     if vid:
+        hits = await yt_search(f"https://www.youtube.com/watch?v={vid}", limit=1)
+        if hits:
+            return hits[0]
         return {
             "id": vid,
             "title": f"YouTube {vid}",
             "url": f"https://www.youtube.com/watch?v={vid}",
             "duration": "?",
             "channel": "",
+            "thumb": thumb_url(vid),
         }
     if query.startswith("http"):
-        return {"id": query, "title": query, "url": query, "duration": "?", "channel": ""}
+        return {"id": query, "title": query, "url": query, "duration": "?", "channel": "", "thumb": ""}
     hits = await yt_search(query, limit=1)
     return hits[0] if hits else None
 
@@ -187,28 +211,29 @@ async def shruti_download(video_id_or_url: str, media_type: str = "audio") -> Pa
     path = DOWNLOAD_DIR / f"{safe}.{ext}"
     if path.exists() and path.stat().st_size > 1024:
         return path
-    try:
-        timeout = aiohttp.ClientTimeout(total=300)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(
-                f"{API_URL}/download",
-                params={"url": vid, "type": media_type, "api_key": API_KEY},
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                with open(path, "wb") as f:
-                    async for chunk in resp.content.iter_chunked(131072):
-                        f.write(chunk)
-        if path.exists() and path.stat().st_size > 1024:
-            return path
-        path.unlink(missing_ok=True)
-        return None
-    except Exception:
-        try:
-            path.unlink(missing_ok=True)
-        except Exception:
-            pass
-        return None
+
+    timeout = aiohttp.ClientTimeout(total=300)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        for base in _API_BASES:
+            try:
+                async with session.get(
+                    f"{base}/download",
+                    params={"url": vid, "type": media_type, "api_key": API_KEY},
+                ) as resp:
+                    if resp.status != 200:
+                        continue
+                    with open(path, "wb") as f:
+                        async for chunk in resp.content.iter_chunked(131072):
+                            f.write(chunk)
+                if path.exists() and path.stat().st_size > 1024:
+                    return path
+                path.unlink(missing_ok=True)
+            except Exception:
+                try:
+                    path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+    return None
 
 
 async def ytdlp_download_audio(url: str) -> Path | None:
@@ -220,22 +245,20 @@ async def ytdlp_download_audio(url: str) -> Path | None:
 
     def _run():
         opts = {
-            "format": "bestaudio/best",
+            "format": "bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": outtmpl,
             "quiet": True,
             "noplaylist": True,
-            "postprocessors": [
-                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
-            ],
+            "nocheckcertificate": True,
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            vid = info.get("id") if info else None
+            vid = (info or {}).get("id")
             if not vid:
                 return None
-            for ext in ("mp3", "m4a", "webm", "opus"):
+            for ext in ("m4a", "webm", "mp3", "opus", "ogg"):
                 cand = DOWNLOAD_DIR / f"{vid}.{ext}"
-                if cand.exists():
+                if cand.exists() and cand.stat().st_size > 1024:
                     return cand
             return None
 
@@ -246,14 +269,31 @@ async def ytdlp_download_audio(url: str) -> Path | None:
 
 
 async def get_audio_file(track: dict) -> Path | None:
-    vid = track.get("id") or track.get("url") or ""
-    path = await shruti_download(vid, "audio")
+    vid = track.get("id") or ""
+    url = track.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else "")
+    path = await shruti_download(vid or url, "audio")
     if path:
         return path
-    url = track.get("url") or (f"https://www.youtube.com/watch?v={vid}" if vid else "")
     if url:
         return await ytdlp_download_audio(url)
     return None
+
+
+async def _download_thumb(url: str) -> Path | None:
+    if not url:
+        return None
+    path = DOWNLOAD_DIR / "thumb_tmp.jpg"
+    try:
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.read()
+                path.write_bytes(data)
+                return path if path.stat().st_size > 100 else None
+    except Exception:
+        return None
 
 
 async def _play_flow(client, message: Message, mode: str = "play"):
@@ -261,12 +301,9 @@ async def _play_flow(client, message: Message, mode: str = "play"):
     if not query:
         await _out(
             message,
-            f"🎵 <b>Usage</b> (sab members use kar sakte — all groups)\n"
-            f"<code>{P}play song name</code>\n"
-            f"<code>{P}play https://youtu.be/...</code>\n"
+            f"🎵 <code>{P}play song name</code>\n"
             f"Reply + <code>{P}play</code>\n"
-            f"VC: auto-join try on group play\n"
-            f"API key: <code>{'SET' if API_KEY else 'MISSING'}</code>",
+            f"API key: <code>{'SET' if API_KEY else 'MISSING — Render/Railway pe SHRUTI_API_KEY daalo'}</code>",
         )
         return
 
@@ -275,12 +312,13 @@ async def _play_flow(client, message: Message, mode: str = "play"):
     if not track:
         if status:
             try:
-                await status.edit_text("❌ Song nahi mili.")
+                await status.edit_text("❌ Song nahi mili")
             except Exception:
                 pass
         return
 
     title = track.get("title") or "Track"
+    vid = track.get("id") or ""
     if status:
         try:
             await status.edit_text(f"⬇️ Downloading…\n🎵 <b>{title}</b>")
@@ -292,42 +330,80 @@ async def _play_flow(client, message: Message, mode: str = "play"):
         if status:
             try:
                 await status.edit_text(
-                    "❌ Download fail — set <code>SHRUTI_API_KEY</code>\n"
-                    f"API: <code>{API_URL}</code>"
+                    "❌ Download fail\n"
+                    f"• SHRUTI_API_KEY: <code>{'set' if API_KEY else 'NOT SET'}</code>\n"
+                    f"• Tried: <code>{', '.join(_API_BASES)}</code>\n"
+                    "• yt-dlp fallback bhi fail (ffmpeg/network?)\n"
+                    "Render/Railway env me key daal ke redeploy karo"
                 )
             except Exception:
                 pass
         return
 
-    who = message.from_user.mention if message.from_user else "User"
-    caption = (
-        f"🎵 <b>{title}</b>\n"
-        f"👤 {who}\n"
-        f"⏱ {track.get('duration', '?')} | 📡 {mode}\n"
-        f"🔗 {track.get('url', '')}"
-    )
-
-    vc_note = ""
+    who = message.from_user
+    who_name = who.mention if who else "User"
     chat = message.chat
     is_group = chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP)
-    if is_group and mode in ("play", "vplay", "cplay"):
+
+    # --- auto VC ---
+    vc_line = ""
+    if is_group:
         if status:
             try:
-                await status.edit_text(f"🎙️ Joining VC…\n🎵 <b>{title}</b>")
+                await status.edit_text(f"🎙️ VC join…\n🎵 <b>{title}</b>")
             except Exception:
                 pass
         ok, info = await vcmod.play_file(client, chat.id, path, title=title)
-        vc_note = f"\n🎙️ VC: {'✅ ' + info if ok else '⚠️ ' + info + ' — chat audio bhej diya'}"
+        vc_line = f"\n🎙️ <b>VC:</b> {'✅ ' + info if ok else '⚠️ ' + info}"
+
+    # --- card: thumb + DP + name ---
+    thumb = track.get("thumb") or thumb_url(vid)
+    caption = (
+        f"🎵 <b>{title}</b>\n"
+        f"👤 Requested by: {who_name}\n"
+        f"📺 {track.get('channel') or 'YouTube'}\n"
+        f"⏱ {track.get('duration', '?')} | 📡 <code>{mode}</code>\n"
+        f"🔗 {track.get('url', '')}"
+        f"{vc_line}"
+    )
 
     try:
-        if mode == "vplay":
-            vpath = await shruti_download(track.get("id") or track.get("url"), "video")
-            if vpath:
-                await message.reply_video(str(vpath), caption=caption + vc_note)
-            else:
-                await message.reply_audio(str(path), caption=caption + vc_note, title=title[:64])
+        # 1) photo card with song art
+        tpath = await _download_thumb(thumb)
+        if tpath:
+            try:
+                await message.reply_photo(str(tpath), caption=caption)
+            except Exception:
+                await message.reply_text(caption)
+            try:
+                tpath.unlink(missing_ok=True)
+            except Exception:
+                pass
         else:
-            await message.reply_audio(str(path), caption=caption + vc_note, title=title[:64])
+            await message.reply_text(caption)
+
+        # 2) requester DP (small)
+        if who:
+            try:
+                photos = [p async for p in client.get_chat_photos(who.id, limit=1)]
+                if photos:
+                    await message.reply_photo(
+                        photos[0].file_id,
+                        caption=f"🎧 Requested by {who_name}",
+                    )
+            except Exception:
+                pass
+
+        # 3) audio / video file
+        if mode == "vplay":
+            vpath = await shruti_download(vid or track.get("url"), "video")
+            if vpath:
+                await message.reply_video(str(vpath), caption=f"🎬 {title}")
+            else:
+                await message.reply_audio(str(path), title=title[:64], caption=f"🎧 {title}")
+        else:
+            await message.reply_audio(str(path), title=title[:64], caption=f"🎧 {title}")
+
         if status:
             try:
                 await status.delete()
@@ -390,14 +466,12 @@ async def songsearch_cmd(client, message: Message):
 
 @app.on_message(filters.command(["stop"], prefixes=P))
 async def stop_cmd(client, message: Message):
-    msg = await vcmod.stop(message.chat.id)
-    await _out(message, f"⏹ {msg}")
+    await _out(message, f"⏹ {await vcmod.stop(message.chat.id)}")
 
 
 @app.on_message(filters.command(["skip"], prefixes=P))
 async def skip_cmd(client, message: Message):
-    msg = await vcmod.skip(message.chat.id)
-    await _out(message, f"⏭ {msg}")
+    await _out(message, f"⏭ {await vcmod.skip(message.chat.id)}")
 
 
 @app.on_message(filters.command(["joinvc"], prefixes=P))
@@ -408,19 +482,17 @@ async def joinvc_cmd(client, message: Message):
 
 @app.on_message(filters.command(["leavevc"], prefixes=P))
 async def leavevc_cmd(client, message: Message):
-    msg = await vcmod.stop(message.chat.id)
-    await _out(message, f"🚪 {msg}")
+    await _out(message, f"🚪 {await vcmod.stop(message.chat.id)}")
 
 
 @app.on_message(filters.command(["musichelp", "mhelp"], prefixes=P))
 async def musichelp_cmd(client, message: Message):
     await _out(
         message,
-        f"🎵 <b>Music</b> — <u>sab members, all groups</u>\n"
-        f"Baaki commands sirf Owner.\n\n"
+        f"🎵 <b>Music</b> — all members / all groups\n\n"
         f"<code>{P}play</code> <code>{P}vplay</code> <code>{P}cplay</code>\n"
         f"<code>{P}songsearch</code> <code>{P}stop</code> <code>{P}skip</code>\n"
         f"<code>{P}joinvc</code> <code>{P}leavevc</code>\n\n"
-        f"🎙️ Group me play = auto VC join try\n"
-        f"API: <code>{'✅' if API_KEY else '❌ set SHRUTI_API_KEY'}</code>",
+        f"Play = thumb + DP + audio + auto VC try\n"
+        f"API key: <code>{'✅' if API_KEY else '❌ NOT SET'}</code>",
     )

@@ -1,7 +1,10 @@
 """
-Voice Chat helper — auto join + play local file (pytgcalls if installed).
+Voice Chat — auto join + play for userbot.
 
-Fallback: returns False so music.py can send audio in chat.
+Tries:
+  1) py-tgcalls (PyTgCalls + MediaStream)
+  2) legacy GroupCallFactory
+  3) raw CreateGroupCall so VC at least opens
 """
 from __future__ import annotations
 
@@ -11,13 +14,12 @@ from typing import Any
 
 log = logging.getLogger("vc")
 
-# chat_id -> call object / flag
 ACTIVE: dict[int, Any] = {}
 QUEUES: dict[int, list[dict]] = {}
+_CLIENT_CALLS: dict[int, Any] = {}  # client id -> PyTgCalls instance
 
 
 async def ensure_group_call(client, chat_id: int) -> tuple[bool, str]:
-    """Try start/join VC in group."""
     try:
         from pyrogram.raw import functions
 
@@ -27,84 +29,113 @@ async def ensure_group_call(client, chat_id: int) -> tuple[bool, str]:
                 functions.phone.CreateGroupCall(
                     peer=peer,
                     random_id=client.rnd_id(),
-                    title="Music",
+                    title="🎵 Music",
                 )
             )
             return True, "VC created"
         except Exception as e:
-            # already exists or no permission
-            return True, f"VC ready ({type(e).__name__})"
+            err = str(e).lower()
+            if "group_call_already" in err or "already" in err:
+                return True, "VC already open"
+            return True, f"VC ok ({type(e).__name__})"
     except Exception as e:
-        return False, f"VC join/create fail: {e}"
+        return False, f"VC create fail: {type(e).__name__}: {e}"
+
+
+async def _get_pytgcalls(client):
+    cid = id(client)
+    if cid in _CLIENT_CALLS:
+        return _CLIENT_CALLS[cid]
+    from pytgcalls import PyTgCalls
+
+    call = PyTgCalls(client)
+    await call.start()
+    _CLIENT_CALLS[cid] = call
+    return call
 
 
 async def play_file(client, chat_id: int, file_path: str | Path, title: str = "") -> tuple[bool, str]:
-    """
-    Auto-join group VC and stream audio file if pytgcalls available.
-    """
     path = Path(file_path)
-    if not path.exists():
-        return False, "file missing"
+    if not path.exists() or path.stat().st_size < 1000:
+        return False, "audio file missing/empty"
 
-    ok, msg = await ensure_group_call(client, chat_id)
-    if not ok:
-        log.warning(msg)
+    await ensure_group_call(client, chat_id)
 
-    # py-tgcalls 2.x style (best-effort)
+    # --- py-tgcalls 2.x ---
     try:
-        from pytgcalls import PyTgCalls
         from pytgcalls.types import MediaStream
 
-        if not hasattr(client, "_pytgcalls"):
-            call = PyTgCalls(client)
-            await call.start()
-            client._pytgcalls = call
-        else:
-            call = client._pytgcalls
-
-        await call.play(chat_id, MediaStream(str(path)))
+        call = await _get_pytgcalls(client)
+        # stop previous if any
+        try:
+            await call.leave_call(chat_id)
+        except Exception:
+            pass
+        await call.play(
+            chat_id,
+            MediaStream(
+                str(path),
+                video_flags=MediaStream.Flags.IGNORE,
+            ),
+        )
         ACTIVE[chat_id] = call
-        return True, f"VC playing: {title or path.name}"
-    except Exception as e1:
-        log.info("pytgcalls MediaStream fail: %s", e1)
+        return True, f"Playing in VC — {title or path.name}"
+    except TypeError:
+        # older MediaStream signature
+        try:
+            from pytgcalls.types import MediaStream
 
-    # older GroupCallFactory style
+            call = await _get_pytgcalls(client)
+            try:
+                await call.leave_call(chat_id)
+            except Exception:
+                pass
+            await call.play(chat_id, MediaStream(str(path)))
+            ACTIVE[chat_id] = call
+            return True, f"Playing in VC — {title or path.name}"
+        except Exception as e:
+            log.warning("pytgcalls play fail: %s", e)
+    except Exception as e:
+        log.warning("pytgcalls fail: %s", e)
+
+    # --- legacy GroupCallFactory ---
     try:
         from pytgcalls import GroupCallFactory
 
-        if chat_id in ACTIVE and hasattr(ACTIVE[chat_id], "stop"):
+        if chat_id in ACTIVE:
             try:
-                await ACTIVE[chat_id].stop()
+                old = ACTIVE[chat_id]
+                if hasattr(old, "stop"):
+                    await old.stop()
             except Exception:
                 pass
-
         gc = GroupCallFactory(client).get_file_group_call(str(path))
         await gc.start(chat_id)
         ACTIVE[chat_id] = gc
-        return True, f"VC (legacy) playing: {title or path.name}"
-    except Exception as e2:
-        return False, f"VC stream unavailable ({type(e2).__name__}: {e2})"
+        return True, f"VC legacy play — {title or path.name}"
+    except Exception as e:
+        return False, f"VC stream nahi chala ({type(e).__name__}) — chat me audio bhej diya"
 
 
 async def stop(chat_id: int) -> str:
     call = ACTIVE.pop(chat_id, None)
     QUEUES.pop(chat_id, None)
     if not call:
-        return "Nothing playing"
+        return "Kuch play nahi ho raha"
     try:
         if hasattr(call, "leave_call"):
             await call.leave_call(chat_id)
         elif hasattr(call, "stop"):
             await call.stop()
     except Exception as e:
-        return f"Stopped (err: {e})"
-    return "Stopped"
+        return f"Stop try: {e}"
+    return "VC stopped"
 
 
 async def skip(chat_id: int) -> str:
     q = QUEUES.get(chat_id) or []
     if not q:
         await stop(chat_id)
-        return "Queue empty — stopped"
+        return "Queue empty — stop"
     q.pop(0)
-    return f"Skipped — left {len(q)}"
+    return f"Skip — left {len(q)}"

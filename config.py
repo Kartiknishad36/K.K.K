@@ -20,6 +20,10 @@ OWNER_ID = int(os.getenv("OWNER_ID", "0") or 0)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "") or ""
 
+# Music (Shruti API) — set on Railway/Render, do not hardcode keys in git
+SHRUTI_API_URL = (os.getenv("SHRUTI_API_URL", "https://api.shrutibots.in") or "https://api.shrutibots.in").rstrip("/")
+SHRUTI_API_KEY = os.getenv("SHRUTI_API_KEY", "") or ""
+
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(DATA_DIR / "userbot.db"))
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

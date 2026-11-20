@@ -1,9 +1,12 @@
 """
-Access control — commands ONLY for:
-  1) jis ID par userbot laga hai (filters.me / client.me)
-  2) config.OWNER_ID (optional master)
+Access control
 
-Baaki kisi ka command ignore — koi reply nahi (silent).
+- Baaki SAARI commands: sirf userbot ID + OWNER_ID (+ sudo)
+- MUSIC commands: ALL group/members use kar sakte (har group me)
+
+Music open list:
+  play song vplay cplay songsearch ssearch ys musichelp mhelp
+  skip stop pause resume queue joinvc leavevc
 """
 from pyrogram import filters
 from pyrogram.types import Message
@@ -11,12 +14,30 @@ from pyrogram import Client
 
 import config
 
-# runtime allow-list (extra sudo ids) — owner can extend later
 SUDO_IDS: set[int] = set()
+
+# Commands anyone in any group may use
+MUSIC_PUBLIC: set[str] = {
+    "play",
+    "song",
+    "vplay",
+    "cplay",
+    "songsearch",
+    "ssearch",
+    "ys",
+    "musichelp",
+    "mhelp",
+    "skip",
+    "stop",
+    "pause",
+    "resume",
+    "queue",
+    "joinvc",
+    "leavevc",
+}
 
 
 async def _only_self_or_owner(flt, client: Client, message: Message) -> bool:
-    # Own outgoing messages = always allow (userbot typing command)
     if getattr(message, "outgoing", False):
         return True
 
@@ -31,12 +52,10 @@ async def _only_self_or_owner(flt, client: Client, message: Message) -> bool:
     if uid in SUDO_IDS:
         return True
 
-    # Secondary / main client: only the account this client is logged in as
     me = getattr(client, "me", None)
     if me is not None and uid == me.id:
         return True
 
-    # Fallback if me not cached yet
     try:
         if not me:
             me = await client.get_me()
@@ -48,7 +67,6 @@ async def _only_self_or_owner(flt, client: Client, message: Message) -> bool:
     return False
 
 
-# Use: filters.command("ping", prefixes=".") & ub
 ub = filters.create(_only_self_or_owner)
 
 
@@ -60,10 +78,19 @@ def revoke_sudo(user_id: int):
     SUDO_IDS.discard(int(user_id))
 
 
+def _cmd_names(commands) -> set[str]:
+    if commands is None:
+        return set()
+    if isinstance(commands, (list, tuple, set)):
+        return {str(c).lower().lstrip(".!/") for c in commands}
+    return {str(commands).lower().lstrip(".!/")}
+
+
 def lock_filters_command():
     """
-    Monkeypatch pyrogram filters.command so EVERY plugin command
-    is auto-restricted to self/owner — no need to edit each file.
+    Monkeypatch filters.command:
+      - music cmds → PUBLIC (no ub lock)
+      - everything else → self/owner only
     Call ONCE before load_plugins().
     """
     if getattr(filters, "_kkk_cmd_locked", False):
@@ -71,8 +98,12 @@ def lock_filters_command():
 
     _orig = filters.command
 
-    def _locked_command(*args, **kwargs):
-        return _orig(*args, **kwargs) & ub
+    def _locked_command(commands=None, prefixes="/", **kwargs):
+        base = _orig(commands, prefixes=prefixes, **kwargs)
+        names = _cmd_names(commands)
+        if names & MUSIC_PUBLIC:
+            return base  # open for all members
+        return base & ub
 
     filters.command = _locked_command  # type: ignore
     filters._kkk_cmd_locked = True  # type: ignore

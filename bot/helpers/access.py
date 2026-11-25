@@ -2,11 +2,7 @@
 Access control
 
 - Baaki SAARI commands: sirf userbot ID + OWNER_ID (+ sudo)
-- MUSIC commands: ALL group/members use kar sakte (har group me)
-
-Music open list:
-  play song vplay cplay songsearch ssearch ys musichelp mhelp
-  skip stop pause resume queue joinvc leavevc
+- MUSIC + WHISPER REVEAL: group members use kar sakte
 """
 from pyrogram import filters
 from pyrogram.types import Message
@@ -16,8 +12,9 @@ import config
 
 SUDO_IDS: set[int] = set()
 
-# Commands anyone in any group may use
-MUSIC_PUBLIC: set[str] = {
+# Anyone in groups may use these
+PUBLIC_CMDS: set[str] = {
+    # music
     "play",
     "song",
     "vplay",
@@ -34,6 +31,11 @@ MUSIC_PUBLIC: set[str] = {
     "queue",
     "joinvc",
     "leavevc",
+    # whisper reveal (target must open secret)
+    "reveal",
+    "ows",
+    "readw",
+    "openw",
 }
 
 
@@ -87,12 +89,6 @@ def _cmd_names(commands) -> set[str]:
 
 
 def lock_filters_command():
-    """
-    Monkeypatch filters.command:
-      - music cmds → PUBLIC (no ub lock)
-      - everything else → self/owner only
-    Call ONCE before load_plugins().
-    """
     if getattr(filters, "_kkk_cmd_locked", False):
         return
 
@@ -101,8 +97,8 @@ def lock_filters_command():
     def _locked_command(commands=None, prefixes="/", **kwargs):
         base = _orig(commands, prefixes=prefixes, **kwargs)
         names = _cmd_names(commands)
-        if names & MUSIC_PUBLIC:
-            return base  # open for all members
+        if names & PUBLIC_CMDS:
+            return base
         return base & ub
 
     filters.command = _locked_command  # type: ignore

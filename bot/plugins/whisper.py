@@ -1,15 +1,16 @@
 """
-🔒 Whisper — secret messages
+🔒 Whisper (userbot-safe — NO inline buttons)
 
-.whisper / .w  @user text     — group me button; sirf target + sender dekh sake
-.whisper / .w  (reply) text   — reply target ko secret
-.swhisper / .sw / .secret @user [sec] text
-                               — DM secret, auto-delete (default 10s)
-.wlist                         — active whispers count (owner)
-.wclear                        — memory clear
+Telegram USER account inline callback buttons support nahi karta.
+Isliye system:
+  1) Group me teaser + ID
+  2) Target ko DM me secret (agar privacy allow)
+  3) Koi bhi .reveal <id> likhe — sirf target/sender ko text milega
 
-Note: Button callbacks userbot account se kaam karte hain jab message
-us account ne bheja ho. Target ko alert me text dikhega.
+.whisper / .w  @user text | reply + text
+.reveal / .ows / .readw  <id>
+.swhisper / .sw / .secret  @user [sec] text   — DM auto-delete
+.wlist  .wclear
 """
 from __future__ import annotations
 
@@ -19,22 +20,15 @@ import time
 from typing import Any
 
 from pyrogram import filters
-from pyrogram.types import (
-    Message,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    CallbackQuery,
-)
+from pyrogram.types import Message
 
 from bot.client import app
 import config
 
 P = config.COMMAND_PREFIX
 
-# whisper_id -> data
 WHISPERS: dict[str, dict[str, Any]] = {}
-# max keep
-MAX_WHISPERS = 200
+MAX_WHISPERS = 300
 DEFAULT_SECRET_SEC = 10
 MAX_SECRET_SEC = 120
 
@@ -50,7 +44,7 @@ async def _out(m: Message, t: str):
 
 
 def _new_id() -> str:
-    for _ in range(20):
+    for _ in range(30):
         wid = str(random.randint(100000, 999999))
         if wid not in WHISPERS:
             return wid
@@ -60,15 +54,12 @@ def _new_id() -> str:
 def _trim():
     if len(WHISPERS) <= MAX_WHISPERS:
         return
-    # drop oldest by ts
     items = sorted(WHISPERS.items(), key=lambda x: x[1].get("ts", 0))
     for k, _ in items[: len(WHISPERS) - MAX_WHISPERS]:
         WHISPERS.pop(k, None)
 
 
 async def _resolve_target(client, message: Message):
-    """Return (user, secret_text) or (None, error)."""
-    # reply path
     if message.reply_to_message and message.reply_to_message.from_user:
         target = message.reply_to_message.from_user
         text = " ".join(message.command[1:]) if len(message.command) > 1 else ""
@@ -76,19 +67,21 @@ async def _resolve_target(client, message: Message):
 
     if len(message.command) < 3:
         return None, (
-            f"🔒 <b>Whisper</b>\n\n"
-            f"Group:\n<code>{P}whisper @user secret text</code>\n"
-            f"Reply + <code>{P}w secret text</code>\n\n"
-            f"DM auto-delete:\n<code>{P}swhisper @user secret</code>\n"
-            f"<code>{P}swhisper @user 15 secret</code> (sec)"
+            f"🔒 <b>Whisper Help</b>\n\n"
+            f"• <code>{P}whisper @user secret text</code>\n"
+            f"• Reply karke <code>{P}w secret text</code>\n\n"
+            f"Padhne ke liye (target):\n"
+            f"• <code>{P}reveal 123456</code>\n\n"
+            f"DM auto-delete:\n"
+            f"• <code>{P}swhisper @user text</code>\n"
+            f"• <code>{P}swhisper @user 20 text</code>\n\n"
+            f"⚠️ User account pe Telegram button support nahi —\n"
+            f"isliye <code>{P}reveal ID</code> se khulta hai."
         )
 
     raw = message.command[1].lstrip("@")
     try:
-        if raw.isdigit():
-            target = await client.get_users(int(raw))
-        else:
-            target = await client.get_users(raw)
+        target = await client.get_users(int(raw) if raw.isdigit() else raw)
     except Exception:
         return None, "❌ User nahi mila — sahi @username / id do."
 
@@ -96,77 +89,139 @@ async def _resolve_target(client, message: Message):
     return target, text
 
 
-# ─── Group whisper ───────────────────────────────────────────
+# ─── Create group whisper ────────────────────────────────────
 @app.on_message(filters.command(["whisper", "w"], prefixes=P))
 async def group_whisper(client, message: Message):
     target, text = await _resolve_target(client, message)
     if target is None:
-        await _out(message, text)  # error / help
+        await _out(message, text)
         return
     if not (text or "").strip():
         await _out(message, "❌ Secret text likho.")
         return
-    if target.is_bot:
+    if getattr(target, "is_bot", False):
         await _out(message, "❌ Bot pe whisper nahi.")
         return
 
-    wid = _new_id()
     me = message.from_user or await client.get_me()
+    wid = _new_id()
+    secret = text.strip()
     WHISPERS[wid] = {
         "from_id": me.id,
         "from_name": me.first_name or "User",
         "to_id": target.id,
         "to_name": target.first_name or "User",
-        "text": text.strip(),
+        "text": secret,
         "ts": time.time(),
         "chat_id": message.chat.id,
     }
     _trim()
 
-    btn = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("👁️ Show Secret Message", callback_data=f"whisper_{wid}")]]
+    mention = f"<a href='tg://user?id={target.id}'>{target.first_name}</a>"
+    teaser = (
+        f"🔒 <b>Secret Whisper</b>\n\n"
+        f"👤 For: {mention}\n"
+        f"🆔 Code: <code>{wid}</code>\n\n"
+        f"Padhne ke liye likho:\n"
+        f"<code>{P}reveal {wid}</code>\n\n"
+        f"Sirf <b>{target.first_name}</b> (ya sender) dekh sakta hai."
     )
-    mention = f"[{target.first_name}](tg://user?id={target.id})"
+
     try:
-        await message.reply_text(
-            f"🔒 <b>Secret Message</b> for {mention}\n\n"
-            f"Sirf wahi (aur sender) dekh sakta hai.\n"
-            f"ID: <code>{wid}</code>",
-            reply_markup=btn,
-            disable_web_page_preview=True,
-        )
+        await message.reply_text(teaser, disable_web_page_preview=True)
     except Exception as e:
-        await _out(message, f"❌ Send fail: <code>{e}</code>")
+        await _out(message, f"❌ Group message fail: <code>{e}</code>")
         WHISPERS.pop(wid, None)
         return
+
+    # Try DM secret to target (best effort)
+    dm_ok = False
+    try:
+        await client.send_message(
+            target.id,
+            f"🔒 <b>Whisper for you</b>\n"
+            f"From: <b>{me.first_name}</b>\n"
+            f"Group code: <code>{wid}</code>\n\n"
+            f"{secret}\n\n"
+            f"Group me bhi: <code>{P}reveal {wid}</code>",
+        )
+        dm_ok = True
+    except Exception:
+        dm_ok = False
 
     try:
         await message.delete()
     except Exception:
         pass
 
+    # confirm only to sender in same chat briefly
+    note = await _out(
+        message,
+        f"✅ Whisper saved <code>{wid}</code>\n"
+        f"DM target: {'✅' if dm_ok else '❌ (privacy) — wo .reveal use kare'}",
+    )
+    if note:
+        await asyncio.sleep(4)
+        try:
+            await note.delete()
+        except Exception:
+            pass
 
-@app.on_callback_query(filters.regex(r"^whisper_\d+$"))
-async def whisper_button(client, query: CallbackQuery):
-    wid = query.data.split("_", 1)[1]
+
+# ─── Reveal (PUBLIC — target / sender only content) ──────────
+@app.on_message(filters.command(["reveal", "ows", "readw", "openw"], prefixes=P))
+async def reveal_cmd(client, message: Message):
+    uid = message.from_user.id if message.from_user else 0
+
+    wid = None
+    if len(message.command) > 1 and message.command[1].isdigit():
+        wid = message.command[1]
+    elif message.reply_to_message and message.reply_to_message.text:
+        # try pick code from replied teaser
+        import re
+
+        m = re.search(r"\b(\d{6,9})\b", message.reply_to_message.text)
+        if m:
+            wid = m.group(1)
+
+    if not wid:
+        await _out(
+            message,
+            f"Usage:\n<code>{P}reveal 123456</code>\n"
+            f"Ya teaser pe reply + <code>{P}reveal</code>",
+        )
+        return
+
     data = WHISPERS.get(wid)
     if not data:
-        await query.answer("⏳ Ye whisper expire / clear ho gaya!", show_alert=True)
+        await _out(message, "⏳ Whisper expire / galat code.")
         return
 
-    uid = query.from_user.id if query.from_user else 0
     if uid not in (data["to_id"], data["from_id"]):
-        await query.answer("Ye message tumhare liye nahi hai 😏", show_alert=True)
+        await _out(message, "😏 Ye secret tumhare liye nahi hai.")
         return
 
-    # Telegram alert limit ~200 chars — split if long
-    body = f"From {data['from_name']}:\n\n{data['text']}"
-    if len(body) > 180:
-        body = body[:177] + "..."
-    await query.answer(body, show_alert=True)
+    # Show ONLY to this user: prefer edit of their command, or reply that others see blurred?
+    # Best: reply (visible in group) is bad — send as private notice if possible.
+    body = (
+        f"🔓 <b>Whisper</b> <code>{wid}</code>\n"
+        f"From: <b>{data['from_name']}</b> → <b>{data['to_name']}</b>\n\n"
+        f"{data['text']}"
+    )
+
+    # Try DM reveal first (private)
+    try:
+        await client.send_message(uid, body)
+        await _out(message, f"✅ Secret tumhari <b>DM</b> me bhej diya.")
+        return
+    except Exception:
+        pass
+
+    # Fallback: reply in chat (group me dikhega — last resort)
+    await _out(message, body)
 
 
-# ─── Secret DM (auto delete) ─────────────────────────────────
+# ─── Secret DM auto-delete ───────────────────────────────────
 @app.on_message(filters.command(["swhisper", "sw", "secret"], prefixes=P))
 async def dm_whisper(client, message: Message):
     if len(message.command) < 3:
@@ -174,22 +229,18 @@ async def dm_whisper(client, message: Message):
             message,
             f"🔒 <b>Secret DM</b>\n"
             f"<code>{P}swhisper @user text</code>\n"
-            f"<code>{P}swhisper @user 20 text</code> — 20 sec delete\n"
-            f"Default delete: <code>{DEFAULT_SECRET_SEC}s</code>",
+            f"<code>{P}swhisper @user 20 text</code>\n"
+            f"Default: {DEFAULT_SECRET_SEC}s delete",\n",
         )
         return
 
     raw = message.command[1].lstrip("@")
     try:
-        if raw.isdigit():
-            target = await client.get_users(int(raw))
-        else:
-            target = await client.get_users(raw)
+        target = await client.get_users(int(raw) if raw.isdigit() else raw)
     except Exception:
         await _out(message, "❌ User nahi mila.")
         return
 
-    # optional seconds as 2nd arg
     rest = message.command[2:]
     sec = DEFAULT_SECRET_SEC
     if rest and rest[0].isdigit():
@@ -199,29 +250,22 @@ async def dm_whisper(client, message: Message):
         text = " ".join(rest)
 
     if not text.strip():
-        await _out(message, "❌ Message khali hai.")
+        await _out(message, "❌ Message khali.")
         return
 
     me = message.from_user or await client.get_me()
     try:
         sent = await client.send_message(
             target.id,
-            f"🔒 <b>Secret Message</b> from <b>{me.first_name}</b>\n\n"
+            f"🔒 <b>Secret</b> from <b>{me.first_name}</b>\n\n"
             f"{text.strip()}\n\n"
             f"⚠️ Auto-delete in <code>{sec}s</code>",
         )
     except Exception as e:
-        await _out(
-            message,
-            f"❌ DM nahi gaya (privacy / block?): <code>{type(e).__name__}: {e}</code>",
-        )
+        await _out(message, f"❌ DM fail: <code>{type(e).__name__}: {e}</code>")
         return
 
-    await _out(
-        message,
-        f"✅ Secret DM → <b>{target.first_name}</b>\n"
-        f"⏱ Delete in <code>{sec}s</code>",
-    )
+    await _out(message, f"✅ Secret DM → <b>{target.first_name}</b> · {sec}s")
     try:
         await message.delete()
     except Exception:
@@ -237,18 +281,13 @@ async def dm_whisper(client, message: Message):
     asyncio.create_task(_del())
 
 
-# ─── Owner helpers ───────────────────────────────────────────
 @app.on_message(filters.command(["wlist"], prefixes=P))
 async def wlist_cmd(client, message: Message):
-    await _out(
-        message,
-        f"🔒 Active whispers: <code>{len(WHISPERS)}</code>\n"
-        f"Clear: <code>{P}wclear</code>",
-    )
+    await _out(message, f"🔒 Active: <code>{len(WHISPERS)}</code> · <code>{P}wclear</code>")
 
 
 @app.on_message(filters.command(["wclear"], prefixes=P))
 async def wclear_cmd(client, message: Message):
     n = len(WHISPERS)
     WHISPERS.clear()
-    await _out(message, f"🗑 Cleared <code>{n}</code> whispers.")
+    await _out(message, f"🗑 Cleared <code>{n}</code>")

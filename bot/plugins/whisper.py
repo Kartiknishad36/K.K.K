@@ -2,20 +2,21 @@
 🔒 Whisper (userbot-safe — NO inline buttons)
 
 Telegram USER account inline callback buttons support nahi karta.
-Isliye system:
-  1) Group me teaser + ID
-  2) Target ko DM me secret (agar privacy allow)
-  3) Koi bhi .reveal <id> likhe — sirf target/sender ko text milega
+Flow:
+  1) Group teaser + ID
+  2) Target ko DM secret (agar privacy allow)
+  3) .reveal <id> — sirf target/sender
 
 .whisper / .w  @user text | reply + text
-.reveal / .ows / .readw  <id>
-.swhisper / .sw / .secret  @user [sec] text   — DM auto-delete
+.reveal / .ows / .readw / .openw  <id>
+.swhisper / .sw / .secret  @user [sec] text
 .wlist  .wclear
 """
 from __future__ import annotations
 
 import asyncio
 import random
+import re
 import time
 from typing import Any
 
@@ -69,13 +70,13 @@ async def _resolve_target(client, message: Message):
         return None, (
             f"🔒 <b>Whisper Help</b>\n\n"
             f"• <code>{P}whisper @user secret text</code>\n"
-            f"• Reply karke <code>{P}w secret text</code>\n\n"
-            f"Padhne ke liye (target):\n"
+            f"• Reply + <code>{P}w secret text</code>\n\n"
+            f"Padhna (target):\n"
             f"• <code>{P}reveal 123456</code>\n\n"
             f"DM auto-delete:\n"
             f"• <code>{P}swhisper @user text</code>\n"
             f"• <code>{P}swhisper @user 20 text</code>\n\n"
-            f"⚠️ User account pe Telegram button support nahi —\n"
+            f"⚠️ User account pe button support nahi —\n"
             f"isliye <code>{P}reveal ID</code> se khulta hai."
         )
 
@@ -89,7 +90,6 @@ async def _resolve_target(client, message: Message):
     return target, text
 
 
-# ─── Create group whisper ────────────────────────────────────
 @app.on_message(filters.command(["whisper", "w"], prefixes=P))
 async def group_whisper(client, message: Message):
     target, text = await _resolve_target(client, message)
@@ -122,7 +122,7 @@ async def group_whisper(client, message: Message):
         f"🔒 <b>Secret Whisper</b>\n\n"
         f"👤 For: {mention}\n"
         f"🆔 Code: <code>{wid}</code>\n\n"
-        f"Padhne ke liye likho:\n"
+        f"Padhne ke liye:\n"
         f"<code>{P}reveal {wid}</code>\n\n"
         f"Sirf <b>{target.first_name}</b> (ya sender) dekh sakta hai."
     )
@@ -134,16 +134,15 @@ async def group_whisper(client, message: Message):
         WHISPERS.pop(wid, None)
         return
 
-    # Try DM secret to target (best effort)
     dm_ok = False
     try:
         await client.send_message(
             target.id,
             f"🔒 <b>Whisper for you</b>\n"
             f"From: <b>{me.first_name}</b>\n"
-            f"Group code: <code>{wid}</code>\n\n"
+            f"Code: <code>{wid}</code>\n\n"
             f"{secret}\n\n"
-            f"Group me bhi: <code>{P}reveal {wid}</code>",
+            f"Group: <code>{P}reveal {wid}</code>",
         )
         dm_ok = True
     except Exception:
@@ -154,21 +153,19 @@ async def group_whisper(client, message: Message):
     except Exception:
         pass
 
-    # confirm only to sender in same chat briefly
     note = await _out(
         message,
-        f"✅ Whisper saved <code>{wid}</code>\n"
-        f"DM target: {'✅' if dm_ok else '❌ (privacy) — wo .reveal use kare'}",
+        f"✅ Whisper <code>{wid}</code>\n"
+        f"DM target: {'✅' if dm_ok else '❌ privacy — unhe .reveal use karna hoga'}",
     )
     if note:
-        await asyncio.sleep(4)
+        await asyncio.sleep(5)
         try:
             await note.delete()
         except Exception:
             pass
 
 
-# ─── Reveal (PUBLIC — target / sender only content) ──────────
 @app.on_message(filters.command(["reveal", "ows", "readw", "openw"], prefixes=P))
 async def reveal_cmd(client, message: Message):
     uid = message.from_user.id if message.from_user else 0
@@ -176,11 +173,8 @@ async def reveal_cmd(client, message: Message):
     wid = None
     if len(message.command) > 1 and message.command[1].isdigit():
         wid = message.command[1]
-    elif message.reply_to_message and message.reply_to_message.text:
-        # try pick code from replied teaser
-        import re
-
-        m = re.search(r"\b(\d{6,9})\b", message.reply_to_message.text)
+    elif message.reply_to_message and (message.reply_to_message.text or ""):
+        m = re.search(r"\b(\d{6,9})\b", message.reply_to_message.text or "")
         if m:
             wid = m.group(1)
 
@@ -201,27 +195,22 @@ async def reveal_cmd(client, message: Message):
         await _out(message, "😏 Ye secret tumhare liye nahi hai.")
         return
 
-    # Show ONLY to this user: prefer edit of their command, or reply that others see blurred?
-    # Best: reply (visible in group) is bad — send as private notice if possible.
     body = (
         f"🔓 <b>Whisper</b> <code>{wid}</code>\n"
         f"From: <b>{data['from_name']}</b> → <b>{data['to_name']}</b>\n\n"
         f"{data['text']}"
     )
 
-    # Try DM reveal first (private)
     try:
         await client.send_message(uid, body)
-        await _out(message, f"✅ Secret tumhari <b>DM</b> me bhej diya.")
+        await _out(message, "✅ Secret tumhari <b>DM</b> me bhej diya.")
         return
     except Exception:
         pass
 
-    # Fallback: reply in chat (group me dikhega — last resort)
     await _out(message, body)
 
 
-# ─── Secret DM auto-delete ───────────────────────────────────
 @app.on_message(filters.command(["swhisper", "sw", "secret"], prefixes=P))
 async def dm_whisper(client, message: Message):
     if len(message.command) < 3:
@@ -230,7 +219,7 @@ async def dm_whisper(client, message: Message):
             f"🔒 <b>Secret DM</b>\n"
             f"<code>{P}swhisper @user text</code>\n"
             f"<code>{P}swhisper @user 20 text</code>\n"
-            f"Default: {DEFAULT_SECRET_SEC}s delete",\n",
+            f"Default delete: <code>{DEFAULT_SECRET_SEC}s</code>",
         )
         return
 
